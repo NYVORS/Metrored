@@ -1,0 +1,16 @@
+{
+  "name": "metrored-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MetroRed en vivo: app para ver dónde viene el siguiente autobús",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
