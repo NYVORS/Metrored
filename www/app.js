@@ -2,8 +2,8 @@
 // Redmetro Rioverde en vivo — prototipo con DATOS SIMULADOS
 // - Paradas según el mapa público de la SCT (Zona Media), posiciones verificadas.
 // - La línea sigue las calles (OSRM) cuando hay internet.
-// - Tiempos calculados: velocidad calibrada con "Instituto Tecnológico Superior
-//   -> Universidad Autónoma Zona Media = 5 min" y frecuencia de 20 min.
+// - L2: minutos reales entre paradas medidos en un recorrido (salida 7:40 de Llanitos).
+// - L1: se estima con la velocidad promedio real de L2. Frecuencia de 20 min.
 // ============================================================
 
 const LINES = [
@@ -17,8 +17,8 @@ const LINES = [
   {
     id: 'L2', short: 'L2', name: 'Eje Norte – Sur', color: '#0b6b45',
     stops: [
-      { n: 'Llanitos' }, { n: 'Centenario' }, { n: 'Mariano Matamoros' }, { n: 'Soriana' }, { n: 'Morelos', tr: true },
-      { n: 'Jacarandas' }, { n: 'Hospital Regional' }, { n: 'Justo Sierra' }, { n: 'Puente Corona' },
+      { n: 'Llanitos' }, { n: 'Centenario' }, { n: 'Mariano Matamoros' }, { n: 'Soriana' }, { n: 'Blvd. Ferrocarrilero' },
+      { n: 'Jacarandas', tr: true }, { n: 'Hospital Regional' }, { n: 'Justo Sierra' }, { n: 'Puente Corona' },
       { n: 'Secundaria Técnica 74' }, { n: 'Universidad Autónoma Zona Media' }, { n: 'CECADEE Sur-Norte' },
       { n: 'Servicios Municipales' }, { n: 'Instituto Tecnológico Superior' },
     ],
@@ -35,8 +35,10 @@ LINES.forEach(l => l.stops.forEach((s, i) => { [s.lat, s.lng] = FIXED[l.id][i]; 
 // ---------- Parámetros del servicio ----------
 const HEADWAY = 20;        // un camión cada 20 min
 const DWELL = 15;          // espera en base (min)
-const ROAD_FACTOR = 1.15;  // si la línea es recta, se estima la distancia por calles
-const CAL = { line: 'L2', from: 'Instituto Tecnológico Superior', to: 'Universidad Autónoma Zona Media', minutes: 5 };
+const ROAD_FACTOR = 1.04;  // si la línea es recta, se estima la distancia por calles
+// Minutos reales desde la salida (por parada, en el orden de LINES). Medido con cronómetro + Strava.
+// L2: Llanitos 7:40 -> Tecnológico 8:12 = 32 min. Centenario es interpolado (no se midió).
+const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 19, 21, 23, 26, 28, 30, 31, 32] };
 let SPEED = 300;           // m/min (se recalcula con la calibración)
 
 const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1';
@@ -94,11 +96,12 @@ const straightGeom = ln => ln.stops.map(s => [s.lat, s.lng]);
 // Recalcula velocidad, tiempos entre paradas y número de camiones.
 function recalcTimes() {
   if (!LINES.every(l => l.stopD)) return;
-  const c = LINES.find(l => l.id === CAL.line);
-  const a = c.stops.findIndex(s => s.n === CAL.from), b = c.stops.findIndex(s => s.n === CAL.to);
-  SPEED = Math.abs(c.stopD[a] - c.stopD[b]) * c.k / CAL.minutes; // metros por minuto
+  const c = LINES.find(l => REAL_T[l.id]);
+  const rt = REAL_T[c.id];
+  SPEED = c.stopD[c.stops.length - 1] * c.k / rt[rt.length - 1]; // m/min promedio real (con paradas)
   LINES.forEach(l => {
-    l.stops.forEach((s, i) => { s.t = l.stopD[i] * l.k / SPEED; s.d = l.stopD[i] * l.k; });
+    l.real = REAL_T[l.id] || null;
+    l.stops.forEach((s, i) => { s.d = l.stopD[i] * l.k; s.t = l.real ? l.real[i] : s.d / SPEED; });
     const last = l.stops.length - 1;
     l.T = l.stops[last].t;                 // minutos de ida
     l.km = l.stops[last].d / 1000;         // km de ida
@@ -141,7 +144,15 @@ function pointAt(ln, d) {
   return g[g.length - 1];
 }
 // minutos recorridos desde el inicio -> posición sobre la ruta
-const positionAt = (ln, minutes) => pointAt(ln, Math.min(minutes, ln.T) * SPEED / ln.k);
+function positionAt(ln, minutes) {
+  const m = Math.max(0, Math.min(minutes, ln.T));
+  if (!ln.real) return pointAt(ln, m * SPEED / ln.k);
+  let i = 0;
+  while (i < ln.stops.length - 2 && m > ln.stops[i + 1].t) i++;
+  const a = ln.stops[i], b = ln.stops[i + 1];
+  const f = b.t > a.t ? (m - a.t) / (b.t - a.t) : 0;
+  return pointAt(ln, (ln.stopD[i] + f * (ln.stopD[i + 1] - ln.stopD[i])));
+}
 
 // ---------- Simulación (sustituir por datos reales) ----------
 function fetchBuses() {
@@ -291,7 +302,7 @@ function renderView() {
       '<div><b>' + mins(ln.dwell) + ' min</b><small>espera en base</small></div>' +
       '<div><b>' + ln.nBuses + '</b><small>camiones necesarios</small></div></div>' +
       '<table class="tbl"><tr><th>Parada</th><th>km</th><th>min</th></tr>' + rows + '</table>' +
-      '<p class="note">Velocidad calculada con ' + CAL.from + ' → ' + CAL.to + ' = ' + CAL.minutes + ' min. ' +
+      '<p class="note">' + (ln.real ? 'Tiempos medidos en un recorrido real.' : 'Tiempos estimados con la velocidad promedio real de L2.') + ' ' +
       (ln.k === 1 ? 'Distancias por calles.' : 'Distancias estimadas (sin internet para trazar por calles).') +
       ' Línea ' + other.short + ': ' + other.km.toFixed(1) + ' km, ' + mins(other.T) + ' min.</p>';
   }
