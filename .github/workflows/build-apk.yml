@@ -28,6 +28,11 @@ jobs:
           if [ ! -d android ]; then npx cap add android; fi
           npx cap sync android
 
+      - name: Permisos de ubicación (Android)
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          grep -q ACCESS_FINE_LOCATION "$M" || sed -i 's#</manifest>#    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n</manifest>#' "$M"
+
       - name: Compilar APK debug
         working-directory: android
         run: ./gradlew assembleDebug
