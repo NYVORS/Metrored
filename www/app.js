@@ -1,17 +1,16 @@
 // ============================================================
 // Redmetro Rioverde en vivo — prototipo con DATOS SIMULADOS
-// Paradas tomadas del mapa público de la SCT (Zona Media).
-// Las posiciones son APROXIMADAS (se calcularon desde la imagen del mapa).
-// Cuando tengas coordenadas reales o GPS, reemplaza LINES y fetchBuses().
+// - Paradas según el mapa público de la SCT (Zona Media).
+// - La línea se dibuja siguiendo las calles (OSRM) cuando hay internet.
+// - Posiciones de paradas APROXIMADAS: se corrigen arrastrándolas
+//   en el modo editor (toca 5 veces la etiqueta "DEMO").
 // ============================================================
 
-// Posición de cada parada como píxel del mapa (x, y) -> convertido a lat/lng.
-// Origen: Morelos (355, 265) ≈ centro de Rioverde, SLP.
+// Posición inicial aproximada (calculada del mapa-imagen). Se corrige con el editor.
 const ORIGIN = { x: 355, y: 265, lat: 21.9330, lng: -99.9800 };
 const LAT_PER_PX = 0.00018, LNG_PER_PX = 0.000194;
 const px = (x, y) => [ORIGIN.lat - (y - ORIGIN.y) * LAT_PER_PX, ORIGIN.lng + (x - ORIGIN.x) * LNG_PER_PX];
 
-// n: nombre · p: [x, y] en el mapa · t: minutos desde la base · tr: zona de transferencia
 const LINES = [
   {
     id: 'L1', short: 'L1', name: 'Rioverde – Ciudad Fernández', color: '#8dc63f',
@@ -49,14 +48,97 @@ const LINES = [
 ];
 LINES.forEach(l => l.stops.forEach(s => { [s.lat, s.lng] = px(s.p[0], s.p[1]); }));
 
-const ONE_WAY = 50;   // minutos de ida (dato de Alejandro, por confirmar)
-const DWELL   = 17;   // minutos de espera en base
+const ONE_WAY = 50;
+const DWELL   = 17;
 const BUSES_PER_LINE = 4;
 const CYCLE = (ONE_WAY + DWELL) * 2;
 
-// ---------- Estado ----------
-let lineIdx = 0, dir = 0, selStop = null;
+const STORE_KEY = 'mr_stops_v2', ROUTE_KEY = 'mr_route_v2_';
+let lineIdx = 0, dir = 0, selStop = null, editMode = false;
 const state = { map: null, buses: [], markers: {}, stopMarkers: [], poly: null };
+
+// ---------- Posiciones guardadas por el editor ----------
+function loadOverrides() {
+  try {
+    const o = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    LINES.forEach(l => {
+      if (o[l.id] && o[l.id].length === l.stops.length) l.stops.forEach((s, i) => { s.lat = o[l.id][i][0]; s.lng = o[l.id][i][1]; });
+    });
+  } catch (e) {}
+}
+function saveOverrides() {
+  try {
+    const o = {};
+    LINES.forEach(l => o[l.id] = l.stops.map(s => [+s.lat.toFixed(6), +s.lng.toFixed(6)]));
+    localStorage.setItem(STORE_KEY, JSON.stringify(o));
+  } catch (e) {}
+}
+
+// ---------- Geometría de la ruta ----------
+function dist(a, b) {
+  const dx = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), dy = b[0] - a[0];
+  return Math.sqrt(dx * dx + dy * dy) * 111320;
+}
+function setGeom(ln, geom) {
+  ln.geom = geom;
+  ln.cum = [0];
+  for (let i = 1; i < geom.length; i++) ln.cum.push(ln.cum[i - 1] + dist(geom[i - 1], geom[i]));
+  let start = 0;
+  ln.stopD = ln.stops.map(s => {
+    let best = start, bd = Infinity;
+    for (let i = start; i < geom.length; i++) {
+      const d = dist(geom[i], [s.lat, s.lng]);
+      if (d < bd) { bd = d; best = i; }
+    }
+    start = best;
+    return ln.cum[best];
+  });
+}
+function straightGeom(ln) { return ln.stops.map(s => [s.lat, s.lng]); }
+
+async function loadRoute(ln) {
+  const sig = ln.stops.map(s => s.lat.toFixed(5) + ',' + s.lng.toFixed(5)).join(';');
+  try {
+    const c = JSON.parse(localStorage.getItem(ROUTE_KEY + ln.id) || 'null');
+    if (c && c.sig === sig) { setGeom(ln, c.geom); return; }
+  } catch (e) {}
+  setGeom(ln, straightGeom(ln));
+  try {
+    const coords = ln.stops.map(s => s.lng + ',' + s.lat).join(';');
+    const r = await fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=full&geometries=geojson');
+    const j = await r.json();
+    if (j.routes && j.routes[0]) {
+      const geom = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+      setGeom(ln, geom);
+      try { localStorage.setItem(ROUTE_KEY + ln.id, JSON.stringify({ sig, geom })); } catch (e) {}
+      if (LINES[lineIdx] === ln) drawStatic();
+    }
+  } catch (e) { /* sin internet: queda la línea recta */ }
+}
+
+function pointAt(ln, d) {
+  const g = ln.geom, c = ln.cum;
+  if (d <= 0) return g[0];
+  for (let i = 1; i < g.length; i++) {
+    if (d <= c[i]) {
+      const f = (d - c[i - 1]) / ((c[i] - c[i - 1]) || 1);
+      return [g[i - 1][0] + f * (g[i][0] - g[i - 1][0]), g[i - 1][1] + f * (g[i][1] - g[i - 1][1])];
+    }
+  }
+  return g[g.length - 1];
+}
+function positionAt(ln, minutes) {
+  const s = ln.stops;
+  let d = ln.stopD[s.length - 1];
+  for (let i = 0; i < s.length - 1; i++) {
+    if (minutes <= s[i + 1].t) {
+      const f = (minutes - s[i].t) / (s[i + 1].t - s[i].t);
+      d = ln.stopD[i] + f * (ln.stopD[i + 1] - ln.stopD[i]);
+      break;
+    }
+  }
+  return pointAt(ln, d);
+}
 
 // ---------- Simulación (sustituir por datos reales) ----------
 function fetchBuses() {
@@ -70,7 +152,6 @@ function fetchBuses() {
   });
   return out;
 }
-
 function busFromPhase(ln, b, p) {
   let d, along, waiting = false;
   if (p < ONE_WAY)                  { d = 0; along = p; }
@@ -81,19 +162,6 @@ function busFromPhase(ln, b, p) {
   return { id: ln.id + '-' + (b + 1), line: ln.id, dir: d, along, waiting, lat: pos[0], lng: pos[1] };
 }
 
-function positionAt(ln, minutes) {
-  const s = ln.stops;
-  for (let i = 0; i < s.length - 1; i++) {
-    if (minutes <= s[i + 1].t) {
-      const f = (minutes - s[i].t) / (s[i + 1].t - s[i].t);
-      return [s[i].lat + f * (s[i + 1].lat - s[i].lat), s[i].lng + f * (s[i + 1].lng - s[i].lng)];
-    }
-  }
-  const l = s[s.length - 1];
-  return [l.lat, l.lng];
-}
-
-// ---------- ETA ----------
 function etaFor(ln, d, stopIdx, buses) {
   const stopT = ln.stops[stopIdx].t;
   const target = d === 0 ? stopT : ONE_WAY - stopT;
@@ -114,8 +182,8 @@ function renderTabs() {
     const b = document.createElement('button');
     b.className = 'tab' + (i === lineIdx ? ' active' : '');
     b.innerHTML = '<span class="badge" style="background:' + ln.color + '">' + ln.short + '</span>' + ln.name;
-    if (i === lineIdx) { b.style.borderColor = ln.color; }
-    b.onclick = () => { lineIdx = i; selStop = null; drawAll(); fitLine(); };
+    if (i === lineIdx) b.style.borderColor = ln.color;
+    b.onclick = () => { lineIdx = i; selStop = null; clearBuses(); drawAll(); fitLine(); };
     el.appendChild(b);
   });
   const dEl = document.getElementById('dirs');
@@ -125,7 +193,7 @@ function renderTabs() {
     const b = document.createElement('button');
     b.className = 'dir' + (d === dir ? ' active' : '');
     b.textContent = label;
-    b.onclick = () => { dir = d; drawAll(); };
+    b.onclick = () => { dir = d; refresh(); renderTabs(); };
     dEl.appendChild(b);
   });
 }
@@ -148,50 +216,104 @@ function renderStops(buses) {
     else etaHtml = '<div class="eta"><b>' + eta + ' min</b><small>próximo</small></div>';
     const tr = st.tr ? '<span class="tr">↔ Transferencia</span>' : '';
     row.innerHTML = '<span class="dot"></span><span class="name">' + st.n + tr + '</span>' + etaHtml;
-    row.onclick = () => { selStop = i; state.map.setView([st.lat, st.lng], 15); drawAll(); };
+    row.onclick = () => { selStop = i; state.map.setView([st.lat, st.lng], 16); drawStatic(); refresh(); };
     el.appendChild(row);
   });
 }
 
-function drawMap(buses) {
+// Capa fija: línea y paradas (se redibuja solo al cambiar algo)
+function drawStatic() {
   const ln = LINES[lineIdx];
   if (state.poly) state.map.removeLayer(state.poly);
   state.stopMarkers.forEach(m => state.map.removeLayer(m));
   state.stopMarkers = [];
-  state.poly = L.polyline(ln.stops.map(s => [s.lat, s.lng]), { color: ln.color, weight: 6, opacity: .9 }).addTo(state.map);
+  state.poly = L.polyline(ln.geom, { color: ln.color, weight: 6, opacity: .9 }).addTo(state.map);
   ln.stops.forEach((s, i) => {
     const cls = 'stop-pin' + (s.tr ? ' tr' : '') + (i === selStop ? ' sel' : '');
     const icon = L.divIcon({ className: '', html: '<div class="' + cls + '" style="--c:' + ln.color + '"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
-    state.stopMarkers.push(L.marker([s.lat, s.lng], { icon }).addTo(state.map).bindTooltip(s.n));
-  });
-  Object.values(state.markers).forEach(m => state.map.removeLayer(m));
-  state.markers = {};
-  buses.filter(b => b.line === ln.id).forEach(b => {
-    const icon = L.divIcon({ className: '', html: '<div class="bus-icon" style="--c:' + ln.color + '">🚌</div>', iconSize: [34, 34], iconAnchor: [17, 17] });
-    state.markers[b.id] = L.marker([b.lat, b.lng], { icon }).addTo(state.map).bindTooltip(b.id + (b.waiting ? ' (en base)' : ''));
+    const m = L.marker([s.lat, s.lng], { icon, draggable: editMode }).addTo(state.map).bindTooltip(s.n, { permanent: editMode, direction: 'top' });
+    if (editMode) {
+      m.on('dragend', () => {
+        const p = m.getLatLng();
+        s.lat = p.lat; s.lng = p.lng;
+        saveOverrides();
+        setGeom(ln, straightGeom(ln));
+        state.poly.setLatLngs(ln.geom);
+        clearTimeout(state.rt);
+        state.rt = setTimeout(() => loadRoute(ln), 800);
+      });
+    }
+    state.stopMarkers.push(m);
   });
 }
 
-function drawAll() {
+function clearBuses() {
+  Object.values(state.markers).forEach(m => state.map.removeLayer(m));
+  state.markers = {};
+}
+function drawBuses(buses) {
+  const ln = LINES[lineIdx];
+  buses.filter(b => b.line === ln.id).forEach(b => {
+    if (state.markers[b.id]) state.markers[b.id].setLatLng([b.lat, b.lng]);
+    else {
+      const icon = L.divIcon({ className: '', html: '<div class="bus-icon" style="--c:' + ln.color + '">🚌</div>', iconSize: [34, 34], iconAnchor: [17, 17] });
+      state.markers[b.id] = L.marker([b.lat, b.lng], { icon, zIndexOffset: 1000 }).addTo(state.map).bindTooltip(b.id);
+    }
+  });
+}
+
+function refresh() {
   const buses = fetchBuses();
   state.buses = buses;
-  renderTabs();
   renderStops(buses);
-  drawMap(buses);
+  drawBuses(buses);
 }
+function drawAll() { renderTabs(); drawStatic(); refresh(); }
 
 function fitLine() {
   const ln = LINES[lineIdx];
-  state.map.fitBounds(ln.stops.map(s => [s.lat, s.lng]), { paddingTopLeft: [20, 90], paddingBottomRight: [20, 320] });
+  state.map.fitBounds(ln.geom, { paddingTopLeft: [20, 90], paddingBottomRight: [20, 320] });
+}
+
+// ---------- Editor de posiciones ----------
+function setEditMode(on) {
+  editMode = on;
+  document.getElementById('editor').hidden = !on;
+  document.getElementById('status').textContent = on ? 'EDITOR' : 'DEMO';
+  drawStatic();
+}
+function exportJson() {
+  const o = {};
+  LINES.forEach(l => o[l.id] = l.stops.map(s => ({ n: s.n, lat: +s.lat.toFixed(6), lng: +s.lng.toFixed(6) })));
+  const txt = JSON.stringify(o, null, 1);
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(() => alert('Posiciones copiadas'), () => prompt('Copia esto:', txt));
+  else prompt('Copia esto:', txt);
+}
+function resetStops() {
+  if (!confirm('¿Borrar posiciones editadas?')) return;
+  try { localStorage.removeItem(STORE_KEY); LINES.forEach(l => localStorage.removeItem(ROUTE_KEY + l.id)); } catch (e) {}
+  location.reload();
 }
 
 function init() {
+  loadOverrides();
+  LINES.forEach(l => setGeom(l, straightGeom(l)));
   state.map = L.map('map', { zoomControl: false }).setView([ORIGIN.lat, ORIGIN.lng], 13);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map);
   drawAll();
   fitLine();
+  LINES.forEach(loadRoute);
   document.getElementById('grab').onclick = () => document.getElementById('sheet').classList.toggle('collapsed');
-  setInterval(drawAll, 5000);
+  let taps = 0, tt;
+  document.getElementById('status').onclick = () => {
+    if (editMode) return setEditMode(false);
+    if (++taps >= 5) { taps = 0; setEditMode(true); }
+    clearTimeout(tt); tt = setTimeout(() => taps = 0, 2000);
+  };
+  document.getElementById('btnCopy').onclick = exportJson;
+  document.getElementById('btnReset').onclick = resetStops;
+  document.getElementById('btnDone').onclick = () => setEditMode(false);
+  setInterval(refresh, 5000);
 }
 
 init();
