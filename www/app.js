@@ -1,68 +1,54 @@
 // ============================================================
 // Redmetro Rioverde en vivo — prototipo con DATOS SIMULADOS
-// - Paradas según el mapa público de la SCT (Zona Media).
-// - La línea se dibuja siguiendo las calles (OSRM) cuando hay internet.
-// - Posiciones de paradas APROXIMADAS: se corrigen arrastrándolas
-//   en el modo editor (toca 5 veces la etiqueta "DEMO").
+// - Paradas según el mapa público de la SCT (Zona Media), posiciones verificadas.
+// - La línea sigue las calles (OSRM) cuando hay internet.
+// - Tiempos calculados: velocidad calibrada con "Instituto Tecnológico Superior
+//   -> Universidad Autónoma Zona Media = 5 min" y frecuencia de 20 min.
 // ============================================================
-
-// Posición inicial aproximada (calculada del mapa-imagen). Se corrige con el editor.
-const ORIGIN = { x: 355, y: 265, lat: 21.9330, lng: -99.9800 };
-const LAT_PER_PX = 0.00018, LNG_PER_PX = 0.000194;
-const px = (x, y) => [ORIGIN.lat - (y - ORIGIN.y) * LAT_PER_PX, ORIGIN.lng + (x - ORIGIN.x) * LNG_PER_PX];
 
 const LINES = [
   {
     id: 'L1', short: 'L1', name: 'Rioverde – Ciudad Fernández', color: '#8dc63f',
     stops: [
-      { n: 'Abasolo',            p: [15, 105],  t: 0 },
-      { n: 'El Refugio',         p: [85, 140],  t: 6 },
-      { n: 'Media Luna',         p: [150, 178], t: 12 },
-      { n: 'Cobach 05',          p: [205, 192], t: 17 },
-      { n: 'Walmart',            p: [273, 213], t: 24 },
-      { n: 'Blvd. Ferrocarril',  p: [315, 243], t: 30, tr: true },
-      { n: 'Morelos',            p: [355, 265], t: 34, tr: true },
-      { n: 'Insurgentes',        p: [435, 262], t: 40 },
-      { n: 'Fiscalía',           p: [600, 245], t: 50 },
+      { n: 'Abasolo' }, { n: 'El Refugio' }, { n: 'Media Luna' }, { n: 'Cobach 05' }, { n: 'Walmart' },
+      { n: 'Blvd. Ferrocarril', tr: true }, { n: 'Morelos', tr: true }, { n: 'Insurgentes' }, { n: 'Fiscalía' },
     ],
   },
   {
     id: 'L2', short: 'L2', name: 'Eje Norte – Sur', color: '#0b6b45',
     stops: [
-      { n: 'Llanitos',                         p: [293, 92],  t: 0 },
-      { n: 'Centenario',                       p: [297, 147], t: 4 },
-      { n: 'Mariano Matamoros',                p: [305, 174], t: 8 },
-      { n: 'Soriana',                          p: [336, 200], t: 12 },
-      { n: 'Morelos',                          p: [355, 265], t: 18, tr: true },
-      { n: 'Jacarandas',                       p: [365, 277], t: 20 },
-      { n: 'Hospital Regional',                p: [385, 300], t: 23 },
-      { n: 'Justo Sierra',                     p: [385, 320], t: 26 },
-      { n: 'Puente Corona',                    p: [417, 312], t: 29 },
-      { n: 'Secundaria Técnica 74',            p: [413, 350], t: 33 },
-      { n: 'Universidad Autónoma Zona Media',  p: [425, 400], t: 39 },
-      { n: 'CECADEE Sur-Norte',                p: [440, 425], t: 43 },
-      { n: 'Servicios Municipales',            p: [435, 440], t: 46 },
-      { n: 'Instituto Tecnológico Superior',   p: [430, 468], t: 50 },
+      { n: 'Llanitos' }, { n: 'Centenario' }, { n: 'Mariano Matamoros' }, { n: 'Soriana' }, { n: 'Morelos', tr: true },
+      { n: 'Jacarandas' }, { n: 'Hospital Regional' }, { n: 'Justo Sierra' }, { n: 'Puente Corona' },
+      { n: 'Secundaria Técnica 74' }, { n: 'Universidad Autónoma Zona Media' }, { n: 'CECADEE Sur-Norte' },
+      { n: 'Servicios Municipales' }, { n: 'Instituto Tecnológico Superior' },
     ],
   },
 ];
-LINES.forEach(l => l.stops.forEach(s => { [s.lat, s.lng] = px(s.p[0], s.p[1]); }));
 
-// Posiciones verificadas por Alejandro (en el mismo orden que las paradas de cada línea).
+// Posiciones verificadas (mismo orden que las paradas de cada línea).
 const FIXED = {
-  L1: [[21.9618,-100.04596],[21.973312,-100.001432],[21.94866,-100.01977],[21.94614,-100.0091],[21.94236,-99.995908],[21.93696,-99.98776],[21.933,-99.98],[21.93354,-99.96448],[21.9366,-99.93247]],
-  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930576,-100.002201],[21.922857,-99.993727],[21.923536,-99.998548],[21.919531,-99.991844],[21.917281,-99.989823],[21.914353,-99.986851],[21.907209,-99.983823],[21.900124,-99.980838],[21.89405,-99.979649],[21.89087,-99.978829],[21.886422,-99.978204]],
+  L1: [[21.945963,-100.052648],[21.940996,-100.041009],[21.93657,-100.029058],[21.933656,-100.021822],[21.927224,-100.006227],[21.925299,-100.002042],[21.923058,-99.994077],[21.922128,-99.979951],[21.919731,-99.956552]],
+  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930557,-100.002422],[21.925393,-100.002022],[21.923566,-99.998588],[21.919278,-99.992375],[21.917188,-99.990336],[21.913946,-99.987102],[21.90707,-99.984188],[21.899703,-99.982242],[21.893981,-99.979935],[21.890552,-99.978866],[21.887858,-99.978007]],
 };
 LINES.forEach(l => l.stops.forEach((s, i) => { [s.lat, s.lng] = FIXED[l.id][i]; }));
 
-const ONE_WAY = 50;
-const DWELL   = 17;
-const BUSES_PER_LINE = 4;
-const CYCLE = (ONE_WAY + DWELL) * 2;
+// ---------- Parámetros del servicio ----------
+const HEADWAY = 20;        // un camión cada 20 min
+const DWELL = 15;          // espera en base (min)
+const ROAD_FACTOR = 1.15;  // si la línea es recta, se estima la distancia por calles
+const CAL = { line: 'L2', from: 'Instituto Tecnológico Superior', to: 'Universidad Autónoma Zona Media', minutes: 5 };
+let SPEED = 300;           // m/min (se recalcula con la calibración)
 
-const STORE_KEY = 'mr_stops_v2', ROUTE_KEY = 'mr_route_v2_';
-let lineIdx = 0, dir = 0, selStop = null, editMode = false;
+const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1';
+let lineIdx = 0, dir = 0, selStop = null, editMode = false, viewIdx = 0, schedStop = 0;
+let trip = { a: 0, b: 0 }, fav = null;
 const state = { map: null, buses: [], markers: {}, stopMarkers: [], poly: null };
+
+// ---------- Utilidades ----------
+const fmtTime = d => d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+const inMin = m => fmtTime(new Date(Date.now() + m * 60000));
+const km = m => (m / 1000).toFixed(1);
+const mins = m => Math.round(m);
 
 // ---------- Posiciones guardadas por el editor ----------
 function loadOverrides() {
@@ -86,8 +72,9 @@ function dist(a, b) {
   const dx = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), dy = b[0] - a[0];
   return Math.sqrt(dx * dx + dy * dy) * 111320;
 }
-function setGeom(ln, geom) {
+function setGeom(ln, geom, road) {
   ln.geom = geom;
+  ln.k = road ? 1 : ROAD_FACTOR;
   ln.cum = [0];
   for (let i = 1; i < geom.length; i++) ln.cum.push(ln.cum[i - 1] + dist(geom[i - 1], geom[i]));
   let start = 0;
@@ -100,27 +87,46 @@ function setGeom(ln, geom) {
     start = best;
     return ln.cum[best];
   });
+  recalcTimes();
 }
-function straightGeom(ln) { return ln.stops.map(s => [s.lat, s.lng]); }
+const straightGeom = ln => ln.stops.map(s => [s.lat, s.lng]);
+
+// Recalcula velocidad, tiempos entre paradas y número de camiones.
+function recalcTimes() {
+  if (!LINES.every(l => l.stopD)) return;
+  const c = LINES.find(l => l.id === CAL.line);
+  const a = c.stops.findIndex(s => s.n === CAL.from), b = c.stops.findIndex(s => s.n === CAL.to);
+  SPEED = Math.abs(c.stopD[a] - c.stopD[b]) * c.k / CAL.minutes; // metros por minuto
+  LINES.forEach(l => {
+    l.stops.forEach((s, i) => { s.t = l.stopD[i] * l.k / SPEED; s.d = l.stopD[i] * l.k; });
+    const last = l.stops.length - 1;
+    l.T = l.stops[last].t;                 // minutos de ida
+    l.km = l.stops[last].d / 1000;         // km de ida
+    l.nBuses = Math.ceil(2 * (l.T + DWELL) / HEADWAY);
+    l.cycle = l.nBuses * HEADWAY;          // camiones separados exactamente HEADWAY min
+    l.dwell = l.cycle / 2 - l.T;           // espera en base resultante
+  });
+}
 
 async function loadRoute(ln) {
   const sig = ln.stops.map(s => s.lat.toFixed(5) + ',' + s.lng.toFixed(5)).join(';');
   try {
     const c = JSON.parse(localStorage.getItem(ROUTE_KEY + ln.id) || 'null');
-    if (c && c.sig === sig) { setGeom(ln, c.geom); return; }
+    if (c && c.sig === sig) { setGeom(ln, c.geom, true); return; }
   } catch (e) {}
-  setGeom(ln, straightGeom(ln));
+  setGeom(ln, straightGeom(ln), false);
   try {
     const coords = ln.stops.map(s => s.lng + ',' + s.lat).join(';');
     const r = await fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=full&geometries=geojson');
     const j = await r.json();
     if (j.routes && j.routes[0]) {
       const geom = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-      setGeom(ln, geom);
+      setGeom(ln, geom, true);
       try { localStorage.setItem(ROUTE_KEY + ln.id, JSON.stringify({ sig, geom })); } catch (e) {}
       if (LINES[lineIdx] === ln) drawStatic();
+      refresh(); renderView();
     }
-  } catch (e) { /* sin internet: queda la línea recta */ }
+  } catch (e) { /* sin internet: queda la línea recta con factor 1.15 */ }
 }
 
 function pointAt(ln, d) {
@@ -134,51 +140,57 @@ function pointAt(ln, d) {
   }
   return g[g.length - 1];
 }
-function positionAt(ln, minutes) {
-  const s = ln.stops;
-  let d = ln.stopD[s.length - 1];
-  for (let i = 0; i < s.length - 1; i++) {
-    if (minutes <= s[i + 1].t) {
-      const f = (minutes - s[i].t) / (s[i + 1].t - s[i].t);
-      d = ln.stopD[i] + f * (ln.stopD[i + 1] - ln.stopD[i]);
-      break;
-    }
-  }
-  return pointAt(ln, d);
-}
+// minutos recorridos desde el inicio -> posición sobre la ruta
+const positionAt = (ln, minutes) => pointAt(ln, Math.min(minutes, ln.T) * SPEED / ln.k);
 
 // ---------- Simulación (sustituir por datos reales) ----------
 function fetchBuses() {
   const now = Date.now() / 60000;
   const out = [];
-  LINES.forEach((ln, li) => {
-    for (let b = 0; b < BUSES_PER_LINE; b++) {
-      const phase = (now + b * (CYCLE / BUSES_PER_LINE) + li * 7) % CYCLE;
-      out.push(busFromPhase(ln, b, phase));
+  LINES.forEach(ln => {
+    for (let k = 0; k < ln.nBuses; k++) {
+      const phase = (((now - k * HEADWAY) % ln.cycle) + ln.cycle) % ln.cycle;
+      out.push(busFromPhase(ln, k, phase));
     }
   });
   return out;
 }
-function busFromPhase(ln, b, p) {
+function busFromPhase(ln, k, p) {
+  const T = ln.T;
   let d, along, waiting = false;
-  if (p < ONE_WAY)                  { d = 0; along = p; }
-  else if (p < ONE_WAY + DWELL)     { d = 0; along = ONE_WAY; waiting = true; }
-  else if (p < 2 * ONE_WAY + DWELL) { d = 1; along = p - ONE_WAY - DWELL; }
-  else                              { d = 1; along = ONE_WAY; waiting = true; }
-  const pos = positionAt(ln, d === 0 ? along : ONE_WAY - along);
-  return { id: ln.id + '-' + (b + 1), line: ln.id, dir: d, along, waiting, lat: pos[0], lng: pos[1] };
+  const W = ln.dwell;
+  if (p < T)                    { d = 0; along = p; }
+  else if (p < T + W)           { d = 0; along = T; waiting = true; }
+  else if (p < 2 * T + W)       { d = 1; along = p - T - W; }
+  else                          { d = 1; along = T; waiting = true; }
+  const pos = positionAt(ln, d === 0 ? along : T - along);
+  return { id: ln.id + '-' + (k + 1), line: ln.id, dir: d, phase: p, waiting, lat: pos[0], lng: pos[1] };
+}
+// Minutos que faltan para que cada camión llegue a la parada (ordenados).
+function waits(ln, d, i, buses) {
+  const t = ln.stops[i].t, T = ln.T;
+  const target = d === 0 ? t : T + ln.dwell + (T - t);
+  return buses.filter(b => b.line === ln.id)
+    .map(b => (((target - b.phase) % ln.cycle) + ln.cycle) % ln.cycle)
+    .sort((x, y) => x - y);
 }
 
-function etaFor(ln, d, stopIdx, buses) {
-  const stopT = ln.stops[stopIdx].t;
-  const target = d === 0 ? stopT : ONE_WAY - stopT;
-  let best = null;
-  buses.filter(x => x.line === ln.id && x.dir === d).forEach(x => {
-    const diff = target - x.along;
-    if (diff < 0) return;
-    if (best === null || diff < best) best = diff;
-  });
-  return best === null ? null : Math.round(best);
+// ---------- Mi parada ----------
+function loadFav() { try { fav = JSON.parse(localStorage.getItem(FAV_KEY) || 'null'); } catch (e) { fav = null; } }
+function saveFav() { try { localStorage.setItem(FAV_KEY, JSON.stringify(fav)); } catch (e) {} }
+function toggleFav(li, i, d) {
+  if (fav && fav.l === li && fav.i === i && fav.d === d) fav = null; else fav = { l: li, i, d };
+  saveFav(); renderFav(); renderView();
+}
+function renderFav() {
+  const el = document.getElementById('fav');
+  if (!fav) { el.innerHTML = ''; return; }
+  const ln = LINES[fav.l], st = ln.stops[fav.i];
+  const w = waits(ln, fav.d, fav.i, state.buses)[0];
+  const dest = fav.d === 0 ? ln.stops[ln.stops.length - 1].n : ln.stops[0].n;
+  const txt = w === undefined ? '—' : (w <= 1 ? 'Llegando' : mins(w) + ' min');
+  el.innerHTML = '<button class="favcard"><span>⭐ Mi parada</span><b>' + st.n + '</b><small>' + ln.short + ' → ' + dest + '</small><em>' + txt + '</em></button>';
+  el.firstChild.onclick = () => { lineIdx = fav.l; dir = fav.d; selStop = fav.i; viewIdx = 0; clearBuses(); drawAll(); state.map.setView([st.lat, st.lng], 16); };
 }
 
 // ---------- UI ----------
@@ -190,45 +202,118 @@ function renderTabs() {
     b.className = 'tab' + (i === lineIdx ? ' active' : '');
     b.innerHTML = '<span class="badge" style="background:' + ln.color + '">' + ln.short + '</span>' + ln.name;
     if (i === lineIdx) b.style.borderColor = ln.color;
-    b.onclick = () => { lineIdx = i; selStop = null; clearBuses(); drawAll(); fitLine(); };
+    b.onclick = () => { lineIdx = i; selStop = null; schedStop = 0; trip = { a: 0, b: LINES[i].stops.length - 1 }; clearBuses(); drawAll(); fitLine(); };
     el.appendChild(b);
   });
-  const dEl = document.getElementById('dirs');
-  const s = LINES[lineIdx].stops;
-  dEl.innerHTML = '';
-  [[0, s[0].n + ' → ' + s[s.length - 1].n], [1, s[s.length - 1].n + ' → ' + s[0].n]].forEach(([d, label]) => {
+  const vEl = document.getElementById('views');
+  vEl.innerHTML = '';
+  ['Paradas', 'Viaje', 'Horarios', 'Info'].forEach((v, i) => {
     const b = document.createElement('button');
-    b.className = 'dir' + (d === dir ? ' active' : '');
-    b.textContent = label;
-    b.onclick = () => { dir = d; refresh(); renderTabs(); };
-    dEl.appendChild(b);
+    b.className = 'vbtn' + (i === viewIdx ? ' active' : '');
+    b.textContent = v;
+    b.onclick = () => { viewIdx = i; renderTabs(); renderView(); };
+    vEl.appendChild(b);
   });
 }
 
-function renderStops(buses) {
+function dirButtons() {
+  const s = LINES[lineIdx].stops;
+  return '<div class="dirs">' + [[0, s[0].n + ' → ' + s[s.length - 1].n], [1, s[s.length - 1].n + ' → ' + s[0].n]]
+    .map(([d, label]) => '<button class="dir' + (d === dir ? ' active' : '') + '" data-d="' + d + '">' + label + '</button>').join('') + '</div>';
+}
+function bindDirs(el) {
+  el.querySelectorAll('.dir').forEach(b => b.onclick = () => { dir = +b.dataset.d; refresh(); renderView(); });
+}
+const etaText = w => w === undefined ? '<div class="eta late"><b>—</b><small>sin datos</small></div>'
+  : (w <= 1 ? '<div class="eta soon"><b>Llegando</b></div>' : '<div class="eta"><b>' + mins(w) + ' min</b><small>' + inMin(w) + '</small></div>');
+
+function renderView() {
+  const el = document.getElementById('view');
   const ln = LINES[lineIdx];
-  const el = document.getElementById('stops');
-  el.innerHTML = '';
-  const order = ln.stops.map((_, i) => i);
-  if (dir === 1) order.reverse();
-  order.forEach(i => {
-    const st = ln.stops[i];
-    const eta = etaFor(ln, dir, i, buses);
-    const row = document.createElement('button');
-    row.className = 'stop' + (i === selStop ? ' selected' : '');
-    row.style.setProperty('--c', ln.color);
-    let etaHtml;
-    if (eta === null) etaHtml = '<div class="eta late"><b>—</b><small>sin datos</small></div>';
-    else if (eta <= 2) etaHtml = '<div class="eta soon"><b>Llegando</b></div>';
-    else etaHtml = '<div class="eta"><b>' + eta + ' min</b><small>próximo</small></div>';
-    const tr = st.tr ? '<span class="tr">↔ Transferencia</span>' : '';
-    row.innerHTML = '<span class="dot"></span><span class="name">' + st.n + tr + '</span>' + etaHtml;
-    row.onclick = () => { selStop = i; state.map.setView([st.lat, st.lng], 16); drawStatic(); refresh(); };
-    el.appendChild(row);
-  });
+  if (!ln.T) { el.innerHTML = ''; return; }
+  const buses = state.buses;
+
+  if (viewIdx === 0) {
+    const order = ln.stops.map((_, i) => i);
+    if (dir === 1) order.reverse();
+    el.innerHTML = dirButtons() + '<div class="stops">' + order.map(i => {
+      const st = ln.stops[i], w = waits(ln, dir, i, buses);
+      const isFav = fav && fav.l === lineIdx && fav.i === i && fav.d === dir;
+      return '<div class="stop' + (i === selStop ? ' selected' : '') + '" data-i="' + i + '" style="--c:' + ln.color + '">' +
+        '<span class="dot"></span><span class="name">' + st.n + (st.tr ? '<span class="tr">↔ Transferencia</span>' : '') +
+        '<span class="sub">' + km(st.d) + ' km desde el inicio</span></span>' + etaText(w[0]) +
+        '<span class="star' + (isFav ? ' on' : '') + '" data-i="' + i + '">' + (isFav ? '★' : '☆') + '</span></div>';
+    }).join('') + '</div>';
+    bindDirs(el);
+    el.querySelectorAll('.stop').forEach(r => {
+      r.onclick = () => { const i = +r.dataset.i; selStop = i; schedStop = i; state.map.setView([ln.stops[i].lat, ln.stops[i].lng], 16); drawStatic(); renderView(); };
+    });
+    el.querySelectorAll('.star').forEach(s => s.onclick = ev => { ev.stopPropagation(); toggleFav(lineIdx, +s.dataset.i, dir); });
+  }
+
+  else if (viewIdx === 1) {
+    const opts = sel => ln.stops.map((s, i) => '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + s.n + '</option>').join('');
+    if (trip.b >= ln.stops.length || trip.a >= ln.stops.length) trip = { a: 0, b: ln.stops.length - 1 };
+    el.innerHTML = '<div class="trip"><label>Salgo de<select id="selA">' + opts(trip.a) + '</select></label>' +
+      '<button id="swap" class="swap" aria-label="Invertir">⇅</button>' +
+      '<label>Voy a<select id="selB">' + opts(trip.b) + '</select></label></div><div id="tripRes"></div>';
+    document.getElementById('selA').onchange = e => { trip.a = +e.target.value; updateTrip(); };
+    document.getElementById('selB').onchange = e => { trip.b = +e.target.value; updateTrip(); };
+    document.getElementById('swap').onclick = () => { [trip.a, trip.b] = [trip.b, trip.a]; renderView(); };
+    updateTrip();
+  }
+
+  else if (viewIdx === 2) {
+    const i = Math.min(schedStop, ln.stops.length - 1);
+    const opts = ln.stops.map((s, k) => '<option value="' + k + '"' + (k === i ? ' selected' : '') + '>' + s.n + '</option>').join('');
+    const w = waits(ln, dir, i, buses);
+    // Próximos camiones: los de este ciclo y los del siguiente (cada 20 min)
+    const list = [];
+    for (let r = 0; r < 2; r++) w.forEach(x => list.push(x + r * ln.cycle));
+    const next = list.sort((a, b) => a - b).slice(0, 6);
+    el.innerHTML = dirButtons() + '<label class="lab">Parada<select id="selS">' + opts + '</select></label>' +
+      '<div class="card"><b>Próximos camiones en ' + ln.stops[i].n + '</b><ul class="times">' +
+      next.map(x => '<li><span>' + inMin(x) + '</span><small>en ' + mins(x) + ' min</small></li>').join('') + '</ul>' +
+      '<p class="note">Estimación: pasa un camión cada ' + HEADWAY + ' min aproximadamente.</p></div>';
+    bindDirs(el);
+    document.getElementById('selS').onchange = e => { schedStop = +e.target.value; selStop = schedStop; renderView(); drawStatic(); };
+  }
+
+  else {
+    const other = LINES[1 - lineIdx];
+    const rows = ln.stops.map((s, i) => '<tr><td>' + s.n + '</td><td>' + km(s.d) + '</td><td>' + mins(s.t) + '</td></tr>').join('');
+    el.innerHTML = '<div class="stats">' +
+      '<div><b>' + ln.km.toFixed(1) + ' km</b><small>distancia de ida</small></div>' +
+      '<div><b>' + mins(ln.T) + ' min</b><small>tiempo de ida</small></div>' +
+      '<div><b>' + (SPEED * 0.06).toFixed(1) + ' km/h</b><small>velocidad promedio</small></div>' +
+      '<div><b>' + HEADWAY + ' min</b><small>entre camiones</small></div>' +
+      '<div><b>' + mins(ln.cycle) + ' min</b><small>vuelta completa</small></div>' +
+      '<div><b>' + mins(ln.dwell) + ' min</b><small>espera en base</small></div>' +
+      '<div><b>' + ln.nBuses + '</b><small>camiones necesarios</small></div></div>' +
+      '<table class="tbl"><tr><th>Parada</th><th>km</th><th>min</th></tr>' + rows + '</table>' +
+      '<p class="note">Velocidad calculada con ' + CAL.from + ' → ' + CAL.to + ' = ' + CAL.minutes + ' min. ' +
+      (ln.k === 1 ? 'Distancias por calles.' : 'Distancias estimadas (sin internet para trazar por calles).') +
+      ' Línea ' + other.short + ': ' + other.km.toFixed(1) + ' km, ' + mins(other.T) + ' min.</p>';
+  }
 }
 
-// Capa fija: línea y paradas (se redibuja solo al cambiar algo)
+function updateTrip() {
+  const ln = LINES[lineIdx], el = document.getElementById('tripRes');
+  if (!el) return;
+  if (trip.a === trip.b) { el.innerHTML = '<p class="note">Elige dos paradas distintas.</p>'; return; }
+  const d = trip.b > trip.a ? 0 : 1;
+  const A = ln.stops[trip.a], B = ln.stops[trip.b];
+  const distM = Math.abs(B.d - A.d), ride = Math.abs(B.t - A.t);
+  const w = waits(ln, d, trip.a, state.buses)[0] || 0;
+  const dest = d === 0 ? ln.stops[ln.stops.length - 1].n : ln.stops[0].n;
+  el.innerHTML = '<div class="card"><div class="stats">' +
+    '<div><b>' + km(distM) + ' km</b><small>distancia</small></div>' +
+    '<div><b>' + mins(ride) + ' min</b><small>en camión</small></div>' +
+    '<div><b>' + (w <= 1 ? 'Ya' : mins(w) + ' min') + '</b><small>próximo camión</small></div></div>' +
+    '<p class="note">Dirección ' + dest + '. Llegarías a ' + B.n + ' hacia las <b>' + inMin(w + ride) + '</b> (' + mins(w + ride) + ' min en total).</p></div>';
+}
+
+// Capa fija: línea y paradas
 function drawStatic() {
   const ln = LINES[lineIdx];
   if (state.poly) state.map.removeLayer(state.poly);
@@ -244,7 +329,7 @@ function drawStatic() {
         const p = m.getLatLng();
         s.lat = p.lat; s.lng = p.lng;
         saveOverrides();
-        setGeom(ln, straightGeom(ln));
+        setGeom(ln, straightGeom(ln), false);
         state.poly.setLatLngs(ln.geom);
         clearTimeout(state.rt);
         state.rt = setTimeout(() => loadRoute(ln), 800);
@@ -253,33 +338,31 @@ function drawStatic() {
     state.stopMarkers.push(m);
   });
 }
-
-function clearBuses() {
-  Object.values(state.markers).forEach(m => state.map.removeLayer(m));
-  state.markers = {};
-}
+function clearBuses() { Object.values(state.markers).forEach(m => state.map.removeLayer(m)); state.markers = {}; }
 function drawBuses(buses) {
   const ln = LINES[lineIdx];
+  const ids = new Set();
   buses.filter(b => b.line === ln.id).forEach(b => {
+    ids.add(b.id);
     if (state.markers[b.id]) state.markers[b.id].setLatLng([b.lat, b.lng]);
     else {
       const icon = L.divIcon({ className: '', html: '<div class="bus-icon" style="--c:' + ln.color + '">🚌</div>', iconSize: [34, 34], iconAnchor: [17, 17] });
       state.markers[b.id] = L.marker([b.lat, b.lng], { icon, zIndexOffset: 1000 }).addTo(state.map).bindTooltip(b.id);
     }
   });
+  Object.keys(state.markers).forEach(id => { if (!ids.has(id)) { state.map.removeLayer(state.markers[id]); delete state.markers[id]; } });
 }
 
 function refresh() {
-  const buses = fetchBuses();
-  state.buses = buses;
-  renderStops(buses);
-  drawBuses(buses);
+  state.buses = fetchBuses();
+  drawBuses(state.buses);
+  renderFav();
+  if (viewIdx === 1) updateTrip(); else renderView();
 }
-function drawAll() { renderTabs(); drawStatic(); refresh(); }
-
+function drawAll() { renderTabs(); drawStatic(); state.buses = fetchBuses(); drawBuses(state.buses); renderFav(); renderView(); }
 function fitLine() {
   const ln = LINES[lineIdx];
-  state.map.fitBounds(ln.geom, { paddingTopLeft: [20, 90], paddingBottomRight: [20, 320] });
+  state.map.fitBounds(ln.geom, { paddingTopLeft: [20, 90], paddingBottomRight: [20, 340] });
 }
 
 // ---------- Editor de posiciones ----------
@@ -304,8 +387,10 @@ function resetStops() {
 
 function init() {
   loadOverrides();
-  LINES.forEach(l => setGeom(l, straightGeom(l)));
-  state.map = L.map('map', { zoomControl: false }).setView([ORIGIN.lat, ORIGIN.lng], 13);
+  loadFav();
+  LINES.forEach(l => setGeom(l, straightGeom(l), false));
+  trip = { a: 0, b: LINES[0].stops.length - 1 };
+  state.map = L.map('map', { zoomControl: false }).setView([21.93, -99.99], 13);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map);
   drawAll();
   fitLine();
