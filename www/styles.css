@@ -160,3 +160,10 @@ select { width:100%; margin-top:3px; padding:9px 6px; border-radius:10px; border
 .sheet { max-height:62vh; }
 
 .logo-img { width:42px; height:42px; border-radius:11px; display:block; box-shadow:0 1px 6px rgba(0,0,0,.35); }
+
+/* Estado en linea y ultimo reporte */
+.netbar { display:flex; flex-direction:column; gap:2px; background:#eef7f1; color:#064d2e; border-radius:12px; padding:7px 11px; margin-bottom:8px; font-size:12.5px; line-height:1.35; }
+.netbar > span { font-weight:700; }
+.netbar small { font-size:12px; color:#3d5a4a; }
+.netbar.error { background:#f1f3f5; color:#46515b; }
+.netbar.error small { color:#6a7885; }
