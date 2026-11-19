@@ -11,14 +11,14 @@ const LINES = [
     id: 'L1', short: 'L1', name: 'Rioverde – Ciudad Fernández', color: '#2fbf5b',
     stops: [
       { n: 'Abasolo' }, { n: 'El Refugio' }, { n: 'Media Luna' }, { n: 'Cobach 05' }, { n: 'Walmart' },
-      { n: 'Blvd. Ferrocarril', tr: true }, { n: 'Morelos', tr: true }, { n: 'Insurgentes' }, { n: 'Fiscalía' },
+      { n: 'Blvd. Ferrocarrilero', tr: true }, { n: 'Morelos', tr: true }, { n: 'Insurgentes' }, { n: 'Fiscalía' },
     ],
   },
   {
     id: 'L2', short: 'L2', name: 'Eje Norte – Sur', color: '#0a6b3d',
     stops: [
-      { n: 'Llanitos' }, { n: 'Centenario' }, { n: 'Mariano Matamoros' }, { n: 'Soriana' }, { n: 'Blvd. Ferrocarrilero' },
-      { n: 'Jacarandas', tr: true }, { n: 'Hospital Regional' }, { n: 'Justo Sierra' }, { n: 'Puente Corona' },
+      { n: 'Llanitos' }, { n: 'Centenario' }, { n: 'Mariano Matamoros' }, { n: 'Soriana' }, { n: 'Blvd. Ferrocarrilero', tr: true },
+      { n: 'Jacarandas' }, { n: 'Morelos', tr: true }, { n: 'Hospital Regional' }, { n: 'Justo Sierra' }, { n: 'Puente Corona' },
       { n: 'Secundaria Técnica 74' }, { n: 'Universidad Autónoma Zona Media' }, { n: 'CECADEE Sur-Norte' },
       { n: 'Servicios Municipales' }, { n: 'Instituto Tecnológico Superior' },
     ],
@@ -28,18 +28,18 @@ const LINES = [
 // Posiciones verificadas (mismo orden que las paradas de cada línea).
 const FIXED = {
   L1: [[21.945963,-100.052648],[21.940996,-100.041009],[21.93657,-100.029058],[21.933656,-100.021822],[21.927224,-100.006227],[21.925299,-100.002042],[21.923058,-99.994077],[21.922128,-99.979951],[21.919731,-99.956552]],
-  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930557,-100.002422],[21.925393,-100.002022],[21.923566,-99.998588],[21.919278,-99.992375],[21.917188,-99.990336],[21.913946,-99.987102],[21.90707,-99.984188],[21.899703,-99.982242],[21.893981,-99.979935],[21.890552,-99.978866],[21.887858,-99.978007]],
+  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930557,-100.002422],[21.925393,-100.002022],[21.923566,-99.998588],[21.923058,-99.994077],[21.919278,-99.992375],[21.917188,-99.990336],[21.913946,-99.987102],[21.90707,-99.984188],[21.899703,-99.982242],[21.893981,-99.979935],[21.890552,-99.978866],[21.887858,-99.978007]],
 };
 LINES.forEach(l => l.stops.forEach((s, i) => { [s.lat, s.lng] = FIXED[l.id][i]; }));
 
 // ---------- Parámetros del servicio ----------
 const NBUSES = 4;          // siempre 4 camiones por línea
-const DWELL = 6;           // espera en cada base (min)
+const DWELL = 17;          // espera en cada base: de 15 a 20 min (se usa el promedio)
 const STOP_WAIT = 1;       // min que "se encuentra en la estación"
 const ROAD_FACTOR = 1.04;  // si la línea es recta, se estima la distancia por calles
 // Minutos reales desde la salida (por parada, en el orden de LINES). Medido con cronómetro + Strava.
-// L2: Llanitos 7:40 -> Tecnológico 8:12 = 32 min. Centenario es interpolado (no se midió).
-const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 19, 21, 23, 26, 28, 30, 31, 32] };
+// L2: Llanitos 7:40 -> Tecnológico 8:12 = 32 min. Centenario es interpolado (no se midió). Morelos = zona de transferencia (7:57).
+const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 17, 19, 21, 23, 26, 28, 30, 31, 32] };
 let SPEED = 300;           // m/min (se recalcula con la calibración)
 
 const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1', SYNC_KEY = 'mr_sync_v1';
@@ -131,7 +131,7 @@ async function loadRoute(ln) {
       if (LINES[lineIdx] === ln) drawStatic();
       refresh(); renderView();
     }
-  } catch (e) { /* sin internet: queda la línea recta con factor 1.15 */ }
+  } catch (e) { /* sin internet: queda la línea recta con el factor de calles */ }
 }
 
 function pointAt(ln, d) {
@@ -179,26 +179,34 @@ function busFromPhase(ln, k, p) {
   const pos = positionAt(ln, d === 0 ? along : T - along);
   return { id: ln.id + '-' + (k + 1), line: ln.id, dir: d, phase: p, waiting, lat: pos[0], lng: pos[1] };
 }
-// Llegadas de cada camión a una parada (ordenadas). here = llegó hace menos de STOP_WAIT min.
+// Llegadas de cada camión a una parada (ordenadas).
+// here = el camión está en la estación. En las bases (Llanitos y Tecnológico) espera de 15 a 20 min antes de salir:
+// ahí board = es la base donde sube el pasajero y dep = minutos que le faltan para salir.
 function arrivals(ln, d, i, buses) {
-  const t = ln.stops[i].t, T = ln.T, W = ln.dwell, c = ln.cycle;
+  const t = ln.stops[i].t, T = ln.T, W = ln.dwell, c = ln.cycle, last = ln.stops.length - 1;
   const target = d === 0 ? t : T + W + (T - t);
+  const boarding = (i === 0 && d === 0) || (i === last && d === 1);
   return buses.filter(b => b.line === ln.id).map(b => {
-    const p = b.phase, w = (((target - p) % c) + c) % c, el = (((p - target) % c) + c) % c;
+    const p = b.phase, el = (((p - target) % c) + c) % c;
+    let w = (((target - p) % c) + c) % c;
+    const inBase = b.waiting && ((i === last && b.dir === 0) || (i === 0 && b.dir === 1));
+    if (boarding && !inBase && w < 0.2) w += c;   // un camión que acaba de salir de la base ya no cuenta como próximo
+    const dep = inBase ? (b.dir === 1 ? c - p : T + W - p) : null;
     let text = 'va en sentido contrario';
     if (d === 0 && p >= 2 * T + W) text = 'en la base de ' + ln.stops[0].n;
-    else if (d === 1 && p >= T && p < T + W) text = 'en la base de ' + ln.stops[ln.stops.length - 1].n;
+    else if (d === 1 && p >= T && p < T + W) text = 'en la base de ' + ln.stops[last].n;
     else if (d === 0 && p < T && p <= target) {
       let j = 0; ln.stops.forEach((s, k) => { if (s.t <= p) j = k; });
       text = (i - j <= 1 ? 'es la próxima parada' : 'a ' + (i - j) + ' paradas') + ' (viene de ' + ln.stops[j].n + ')';
     } else if (d === 1 && p >= T + W && p <= target) {
       const m = T - (p - T - W); let j = 0; ln.stops.forEach((s, k) => { if (s.t <= m) j = k; });
-      text = (j - i <= 0 ? 'es la próxima parada' : 'a ' + (j - i + 1) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, ln.stops.length - 1)].n + ')';
+      text = (j - i <= 0 ? 'es la próxima parada' : 'a ' + (j - i + 1) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, last)].n + ')';
     }
-    return { w, bus: b, here: el < STOP_WAIT, text };
+    return { w, bus: b, here: inBase || (i !== 0 && i !== last && el < STOP_WAIT), inBase, board: inBase && boarding, dep, text };
   }).sort((x, y) => x.w - y.w);
 }
-const waits = (ln, d, i, buses) => arrivals(ln, d, i, buses).filter(a => !a.here).map(a => a.w);
+// Minutos para los próximos camiones. En la base cuenta también el que está esperando (w = minutos para que salga).
+const waits = (ln, d, i, buses) => arrivals(ln, d, i, buses).filter(a => !a.here || a.board).map(a => a.w);
 
 // ---------- Mi parada ----------
 function loadFav() { try { fav = JSON.parse(localStorage.getItem(FAV_KEY) || 'null'); } catch (e) { fav = null; } }
@@ -251,12 +259,13 @@ function bindDirs(el) {
 }
 function etaText(arr) {
   const h = arr.find(x => x.here), n = arr.find(x => !x.here);
+  if (h && h.board) return '<div class="eta here"><b>En la estación</b><small>Sale ~' + inMin(h.dep) + '</small></div>';
   if (h) return '<div class="eta here"><b>En la estación</b><small>' + h.bus.id + (n ? ' · sig. ' + inMin(n.w) : '') + '</small></div>';
   if (!n) return '<div class="eta late"><b>—</b><small>sin datos</small></div>';
   return n.w <= 1 ? '<div class="eta soon"><b>Llegando</b><small>llega ' + inMin(n.w) + '</small></div>'
     : '<div class="eta"><b>' + mins(n.w) + ' min</b><small>Llega a las ' + inMin(n.w) + '</small></div>';
 }
-const subTxt = arr => { const n = arr.find(x => !x.here); return n ? n.bus.id + ': ' + n.text : ''; };
+const subTxt = arr => { const bb = arr.find(x => x.board); if (bb) return bb.bus.id + ': espera en la base (15 a 20 min)'; const n = arr.find(x => !x.here); return n ? n.bus.id + ': ' + n.text : ''; };
 
 function renderView() {
   const el = document.getElementById('view');
@@ -405,7 +414,7 @@ function fitLine() {
 function setEditMode(on) {
   editMode = on;
   document.getElementById('editor').hidden = !on;
-  document.getElementById('status').textContent = on ? 'EDITOR' : 'DEMO';
+  document.getElementById('status').textContent = on ? 'EDITOR' : 'BETA';
   drawStatic();
 }
 function exportJson() {
@@ -445,21 +454,29 @@ function busCard(ln, b) {
 }
 
 // ---------- Ubicación del usuario ----------
+// El permiso se pregunta UNA sola vez (la primera vez que abres la app). Después se activa solo.
+const GEO_KEY = 'mr_geo_v1';   // sin valor = nunca preguntado · 'asked' = ya se preguntó · 'granted' = permitido · 'denied' = negado
+const geoGet = () => { try { return localStorage.getItem(GEO_KEY); } catch (e) { return null; } };
+const geoSet = v => { try { localStorage.setItem(GEO_KEY, v); } catch (e) {} };
 const loc = { pos: null, acc: 0, marker: null, circle: null, trail: null, pts: [], watch: null, near: null, answer: null, err: null };
 function loadSync() { try { sync = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch (e) { sync = {}; } }
 function askPerm() { document.getElementById('perm').hidden = false; }
 function startGeo() {
   document.getElementById('perm').hidden = true;
   if (!navigator.geolocation) { loc.err = 'fail'; renderNear(); return; }
-  if (loc.watch !== null) return;
+  if (loc.watch !== null) { renderNear(); return; }
   loc.err = null;
   loc.watch = navigator.geolocation.watchPosition(onPos, e => {
-    if (loc.watch !== null) navigator.geolocation.clearWatch(loc.watch);
-    loc.watch = null; loc.err = e.code === 1 ? 'denied' : 'fail'; renderNear();
+    if (e.code === 1) {                          // permiso negado
+      if (loc.watch !== null) navigator.geolocation.clearWatch(loc.watch);
+      loc.watch = null; geoSet('denied'); loc.err = 'denied';
+    } else if (!loc.pos) loc.err = 'fail';       // sin señal por ahora: sigue intentando solo
+    renderNear();
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
   renderNear();
 }
 function onPos(p) {
+  if (geoGet() !== 'granted') geoSet('granted');
   loc.err = null; loc.acc = p.coords.accuracy;
   const ll = [p.coords.latitude, p.coords.longitude], first = !loc.pos;
   loc.pos = ll;
@@ -490,10 +507,21 @@ function updateNear() {
   }
   renderNear();
 }
-// El usuario confirma que el camión ya está: se ajusta el reloj de la línea para que ese camión esté en la estación ahora.
-function syncTo(li, i, d) {
-  const ln = LINES[li], arr = arrivals(ln, d, i, state.buses);
-  const best = arr.map(a => a.w > ln.cycle / 2 ? a.w - ln.cycle : a.w).reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+// El usuario confirma que el camión ya está: se ajusta el reloj de la línea.
+// - En una parada normal: el camión llega ahora.
+// - En una base (Llanitos / Tecnológico): el camión está DETENIDO esperando y le faltan "left" min para salir (no sale de inmediato).
+function syncTo(li, i, d, left) {
+  const ln = LINES[li], last = ln.stops.length - 1, c = ln.cycle;
+  const base = (i === 0 && d === 0) || (i === last && d === 1);
+  let best;
+  if (base) {
+    const target = d === 0 ? c - left : ln.T + ln.dwell - left;   // fase en que el camión espera en la base con "left" min por salir
+    const diff = b => { let x = (target - b.phase) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return x; };
+    best = fetchBuses().filter(b => b.line === ln.id).map(diff).reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+  } else {
+    const arr = arrivals(ln, d, i, state.buses);
+    best = arr.map(a => a.w > c / 2 ? a.w - c : a.w).reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+  }
   sync[ln.id] = (sync[ln.id] || 0) + best;
   try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) {}
   loc.answer = { yes: d };
@@ -508,28 +536,43 @@ function renderNear() {
       : loc.err === 'fail' ? '<div class="near warn">📍 No se pudo obtener tu ubicación. <button class="nbtn" id="nAsk">Reintentar</button></div>'
       : loc.watch !== null ? '<div class="near">📍 Buscando tu ubicación…</div>'
       : '<button class="near ask" id="nAsk">📍 Activar mi ubicación para saber tu parada</button>';
-    bind('#nAsk', () => { if (loc.err) { loc.err = null; startGeo(); } else askPerm(); });
+    bind('#nAsk', () => { loc.err = null; if (geoGet() === null) askPerm(); else startGeo(); });
     return;
   }
   const n = loc.near, ln = LINES[n.li], S = ln.stops, st = S[n.i], last = S.length - 1;
+  const base = n.i === 0 || n.i === last;
   const dirs = n.i === 0 ? [0] : n.i === last ? [1] : [0, 1];
   const lab = d => 'hacia ' + (d === 0 ? S[last].n : S[0].n);
   const head = '<div class="nh"><b>📍 ' + st.n + '</b><small>' + ln.short + ' · a ' + Math.round(n.d) + ' m de ti</small></div>';
   const rows = () => dirs.map(d => {
     const a = arrivals(ln, d, n.i, state.buses).find(x => !x.here);
-    return a ? '<div class="nrow"><span>' + lab(d) + '<small>' + a.bus.id + ' · llega a las ' + inMin(a.w) + '</small></span><b class="cd" data-ts="' + (Date.now() + a.w * 60000) + '"></b></div>' : '';
+    return a ? '<div class="nrow"><span>' + lab(d) + '<small>' + a.bus.id + ' · ' + (base ? 'sale' : 'llega') + ' a las ' + inMin(a.w) + '</small></span><b class="cd" data-ts="' + (Date.now() + a.w * 60000) + '"></b></div>' : '';
   }).join('');
   let html;
   if (n.d > 250) html = head + '<p class="nq">Aún no estás en la parada. Si sales ahora, el siguiente MetroRed pasa en:</p>' + rows();
+  else if (loc.answer && loc.answer.ask !== undefined) {
+    // Ya está en la base: se pregunta hace cuánto llegó para no hacerlo salir de inmediato.
+    const W = Math.round(ln.dwell);
+    const chips = [['Recién llegó', W], ['Hace ~5 min', W - 5], ['Hace ~10 min', W - 10], ['Ya va a salir', 2]];
+    html = head + '<p class="nq">¿Hace cuánto llegó a la base? Aquí espera de 15 a 20 min antes de salir.</p><div class="nb">' +
+      chips.map(c => '<button class="nbtn y" data-left="' + c[1] + '">' + c[0] + '</button>').join('') + '<button class="nbtn" id="nCancel">Cancelar</button></div>';
+  }
   else if (loc.answer && loc.answer.yes !== undefined) {
     const d = loc.answer.yes, h = arrivals(ln, d, n.i, state.buses).find(x => x.here);
-    if (h) html = head + '<div class="nhere">🚌 Se encuentra en la estación</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale en un momento.</p>';
-    else { loc.answer = 'no'; html = head + '<p class="nq">El MetroRed ya salió. El siguiente llega en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya llegó otro</button>'; }
-  } else if (loc.answer === 'no') html = head + '<p class="nq">El MetroRed llegará en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya llegó</button>';
-  else html = head + '<p class="nq">¿Ya está el MetroRed en esta parada?</p><div class="nb">' +
-    dirs.map(d => '<button class="nbtn y" data-y="' + d + '">Sí, va ' + lab(d) + '</button>').join('') + '<button class="nbtn" id="nNo">Todavía no</button></div>';
+    if (h && h.board) html = head + '<div class="nhere">🚌 Se encuentra en la base</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale hacia las <b>' + inMin(h.dep) + '</b> (en ' + mins(h.dep) + ' min). En la base espera de 15 a 20 min.</p><button class="nbtn" id="nLeft">Ya salió</button>';
+    else if (h) html = head + '<div class="nhere">🚌 Se encuentra en la estación</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale en un momento.</p>';
+    else { loc.answer = 'no'; html = head + '<p class="nq">El MetroRed ya salió. El siguiente ' + (base ? 'sale' : 'llega') + ' en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya llegó otro</button>'; }
+  } else if (loc.answer === 'no') html = head + '<p class="nq">El MetroRed ' + (base ? 'saldrá' : 'llegará') + ' en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya llegó</button>';
+  else html = head + '<p class="nq">' + (base ? '¿Ya está el MetroRed en la base?' : '¿Ya está el MetroRed en esta parada?') + '</p><div class="nb">' +
+    dirs.map(d => '<button class="nbtn y" data-y="' + d + '">' + (base ? 'Sí, ya está aquí' : 'Sí, va ' + lab(d)) + '</button>').join('') + '<button class="nbtn" id="nNo">Todavía no</button></div>';
   el.innerHTML = '<div class="near">' + html + '</div>';
-  el.querySelectorAll('[data-y]').forEach(b => b.onclick = () => syncTo(n.li, n.i, +b.dataset.y));
+  el.querySelectorAll('[data-y]').forEach(b => b.onclick = () => {
+    const d = +b.dataset.y;
+    if (base) { loc.answer = { ask: d }; renderNear(); } else syncTo(n.li, n.i, d, 0);
+  });
+  el.querySelectorAll('[data-left]').forEach(b => b.onclick = () => syncTo(n.li, n.i, loc.answer.ask, +b.dataset.left));
+  bind('#nCancel', () => { loc.answer = null; renderNear(); });
+  bind('#nLeft', () => { syncTo(n.li, n.i, loc.answer.yes, 0); loc.answer = 'no'; renderNear(); });
   bind('#nNo', () => { loc.answer = 'no'; renderNear(); });
   bind('#nYes', () => { loc.answer = null; renderNear(); });
   tickCd();
@@ -561,12 +604,13 @@ function init() {
   document.getElementById('btnCopy').onclick = exportJson;
   document.getElementById('btnReset').onclick = resetStops;
   document.getElementById('btnDone').onclick = () => setEditMode(false);
-  document.getElementById('permOk').onclick = startGeo;
-  document.getElementById('permNo').onclick = () => { document.getElementById('perm').hidden = true; renderNear(); };
-  document.getElementById('locBtn').onclick = () => loc.pos ? state.map.setView(loc.pos, 16) : askPerm();
+  document.getElementById('permOk').onclick = () => { geoSet('asked'); startGeo(); };
+  document.getElementById('permNo').onclick = () => { geoSet('asked'); document.getElementById('perm').hidden = true; renderNear(); };
+  document.getElementById('locBtn').onclick = () => loc.pos ? state.map.setView(loc.pos, 16) : (geoGet() === null ? askPerm() : startGeo());
   renderNear();
-  if (navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: 'geolocation' }).then(r => r.state === 'granted' ? startGeo() : askPerm()).catch(askPerm);
-  else askPerm();
+  // El permiso se pregunta solo la primera vez. Si ya lo diste, se activa solo; si dijiste "Ahora no", solo con el botón 📍.
+  const g = geoGet();
+  if (g === 'granted') startGeo(); else if (g === null) askPerm();
   setInterval(tickCd, 1000);
   setInterval(refresh, 5000);
 }
