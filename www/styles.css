@@ -158,3 +158,5 @@ select { width:100%; margin-top:3px; padding:9px 6px; border-radius:10px; border
 .permbox button { width:100%; border:0; border-radius:12px; padding:12px; font-weight:800; font-size:15px; background:linear-gradient(135deg,#064d2e,#12a150); color:#fff; margin-top:8px; }
 .permbox button.ghost { background:#eef1f3; color:#16212b; }
 .sheet { max-height:62vh; }
+
+.logo-img { width:42px; height:42px; border-radius:11px; display:block; box-shadow:0 1px 6px rgba(0,0,0,.35); }

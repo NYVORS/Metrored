@@ -1,49 +1,49 @@
 // ============================================================
-// Redmetro Rioverde en vivo — prototipo con DATOS SIMULADOS
-// - Paradas según el mapa público de la SCT (Zona Media), posiciones verificadas.
-// - La línea sigue las calles (OSRM) cuando hay internet.
+// Redmetro Rioverde en vivo - prototipo con DATOS SIMULADOS
+// - Paradas segun el mapa publico de la SCT (Zona Media), posiciones verificadas.
+// - La linea sigue las calles (OSRM) cuando hay internet.
 // - L2: minutos reales entre paradas medidos en un recorrido (salida 7:40 de Llanitos).
 // - L1: se estima con la velocidad promedio real de L2. Frecuencia de 20 min.
 // ============================================================
 
 const LINES = [
   {
-    id: 'L1', short: 'L1', name: 'Rioverde – Ciudad Fernández', color: '#2fbf5b',
+    id: 'L1', short: 'L1', name: 'Rioverde \u2013 Ciudad Fern\u00e1ndez', color: '#2fbf5b',
     stops: [
       { n: 'Abasolo' }, { n: 'El Refugio' }, { n: 'Media Luna' }, { n: 'Cobach 05' }, { n: 'Walmart' },
-      { n: 'Blvd. Ferrocarrilero', tr: true }, { n: 'Morelos', tr: true }, { n: 'Insurgentes' }, { n: 'Fiscalía' },
+      { n: 'Blvd. Ferrocarrilero', tr: true }, { n: 'Morelos', tr: true }, { n: 'Insurgentes' }, { n: 'Fiscal\u00eda' },
     ],
   },
   {
-    id: 'L2', short: 'L2', name: 'Eje Norte – Sur', color: '#0a6b3d',
+    id: 'L2', short: 'L2', name: 'Eje Norte \u2013 Sur', color: '#0a6b3d',
     stops: [
       { n: 'Llanitos' }, { n: 'Centenario' }, { n: 'Mariano Matamoros' }, { n: 'Soriana' }, { n: 'Blvd. Ferrocarrilero', tr: true },
       { n: 'Jacarandas' }, { n: 'Morelos', tr: true }, { n: 'Hospital Regional' }, { n: 'Justo Sierra' }, { n: 'Puente Corona' },
-      { n: 'Secundaria Técnica 74' }, { n: 'Universidad Autónoma Zona Media' }, { n: 'CECADEE Sur-Norte' },
-      { n: 'Servicios Municipales' }, { n: 'Instituto Tecnológico Superior' },
+      { n: 'Secundaria T\u00e9cnica 74' }, { n: 'Universidad Aut\u00f3noma Zona Media' }, { n: 'CECADEE Sur-Norte' },
+      { n: 'Servicios Municipales' }, { n: 'Instituto Tecnol\u00f3gico Superior' },
     ],
   },
 ];
 
-// Posiciones verificadas (mismo orden que las paradas de cada línea).
+// Posiciones verificadas (mismo orden que las paradas de cada linea).
 const FIXED = {
   L1: [[21.945963,-100.052648],[21.940996,-100.041009],[21.93657,-100.029058],[21.933656,-100.021822],[21.927224,-100.006227],[21.925299,-100.002042],[21.923058,-99.994077],[21.922128,-99.979951],[21.919731,-99.956552]],
-  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930557,-100.002422],[21.925393,-100.002022],[21.923566,-99.998588],[21.923058,-99.994077],[21.919278,-99.992375],[21.917188,-99.990336],[21.913946,-99.987102],[21.90707,-99.984188],[21.899703,-99.982242],[21.893981,-99.979935],[21.890552,-99.978866],[21.887858,-99.978007]],
+  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930557,-100.002422],[21.925393,-100.002022],[21.923566,-99.998588],[21.923058,-99.994077],[21.919278,-99.992375],[21.917188,-99.990336],[21.913946,-99.987102],[21.90707,-99.984188],[21.899703,-99.982242],[21.897899,-99.981223],[21.894028,-99.980102],[21.887858,-99.978007]],
 };
 LINES.forEach(l => l.stops.forEach((s, i) => { [s.lat, s.lng] = FIXED[l.id][i]; }));
 
-// ---------- Parámetros del servicio ----------
-const NBUSES = 4;          // siempre 4 camiones por línea
+// ---------- Parametros del servicio ----------
+const NBUSES = 4;          // siempre 4 camiones por linea
 const DWELL = 17;          // espera en cada base: de 15 a 20 min (se usa el promedio)
-const STOP_WAIT = 1;       // min que "se encuentra en la estación"
-const ROAD_FACTOR = 1.04;  // si la línea es recta, se estima la distancia por calles
-// Minutos reales desde la salida (por parada, en el orden de LINES). Medido con cronómetro + Strava.
-// L2: Llanitos 7:40 -> Tecnológico 8:12 = 32 min. Centenario es interpolado (no se midió). Morelos = zona de transferencia (7:57).
+const STOP_WAIT = 1;       // min que "se encuentra en la estacion"
+const ROAD_FACTOR = 1.04;  // si la linea es recta, se estima la distancia por calles
+// Minutos reales desde la salida (por parada, en el orden de LINES). Medido con cronometro + Strava.
+// L2: Llanitos 7:40 -> Tecnologico 8:12 = 32 min. Centenario es interpolado (no se midio). Morelos = zona de transferencia (7:57).
 const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 17, 19, 21, 23, 26, 28, 30, 31, 32] };
-let SPEED = 300;           // m/min (se recalcula con la calibración)
+let SPEED = 300;           // m/min (se recalcula con la calibracion)
 
 const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1', SYNC_KEY = 'mr_sync_v1';
-let sync = {};   // ajuste de reloj por línea (min) cuando el usuario confirma que el camión ya está
+let sync = {};   // ajuste de reloj por linea (min) cuando el usuario confirma que el camion ya esta
 let lineIdx = 0, dir = 0, selStop = null, editMode = false, viewIdx = 0, schedStop = 0;
 let trip = { a: 0, b: 0 }, fav = null;
 const state = { map: null, buses: [], markers: {}, stopMarkers: [], poly: null };
@@ -71,7 +71,7 @@ function saveOverrides() {
   } catch (e) {}
 }
 
-// ---------- Geometría de la ruta ----------
+// ---------- Geometria de la ruta ----------
 function dist(a, b) {
   const dx = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180), dy = b[0] - a[0];
   return Math.sqrt(dx * dx + dy * dy) * 111320;
@@ -95,7 +95,7 @@ function setGeom(ln, geom, road) {
 }
 const straightGeom = ln => ln.stops.map(s => [s.lat, s.lng]);
 
-// Recalcula velocidad, tiempos entre paradas y número de camiones.
+// Recalcula velocidad, tiempos entre paradas y numero de camiones.
 function recalcTimes() {
   if (!LINES.every(l => l.stopD)) return;
   const c = LINES.find(l => REAL_T[l.id]);
@@ -131,7 +131,7 @@ async function loadRoute(ln) {
       if (LINES[lineIdx] === ln) drawStatic();
       refresh(); renderView();
     }
-  } catch (e) { /* sin internet: queda la línea recta con el factor de calles */ }
+  } catch (e) { /* sin internet: queda la linea recta con el factor de calles */ }
 }
 
 function pointAt(ln, d) {
@@ -145,7 +145,7 @@ function pointAt(ln, d) {
   }
   return g[g.length - 1];
 }
-// minutos recorridos desde el inicio -> posición sobre la ruta
+// minutos recorridos desde el inicio -> posicion sobre la ruta
 function positionAt(ln, minutes) {
   const m = Math.max(0, Math.min(minutes, ln.T));
   if (!ln.real) return pointAt(ln, m * SPEED / ln.k);
@@ -156,7 +156,7 @@ function positionAt(ln, minutes) {
   return pointAt(ln, (ln.stopD[i] + f * (ln.stopD[i + 1] - ln.stopD[i])));
 }
 
-// ---------- Simulación (sustituir por datos reales) ----------
+// ---------- Simulacion (sustituir por datos reales) ----------
 function fetchBuses() {
   const out = [];
   LINES.forEach(ln => {
@@ -179,9 +179,9 @@ function busFromPhase(ln, k, p) {
   const pos = positionAt(ln, d === 0 ? along : T - along);
   return { id: ln.id + '-' + (k + 1), line: ln.id, dir: d, phase: p, waiting, lat: pos[0], lng: pos[1] };
 }
-// Llegadas de cada camión a una parada (ordenadas).
-// here = el camión está en la estación. En las bases (Llanitos y Tecnológico) espera de 15 a 20 min antes de salir:
-// ahí board = es la base donde sube el pasajero y dep = minutos que le faltan para salir.
+// Llegadas de cada camion a una parada (ordenadas).
+// here = el camion esta en la estacion. En las bases (Llanitos y Tecnologico) espera de 15 a 20 min antes de salir:
+// ahi board = es la base donde sube el pasajero y dep = minutos que le faltan para salir.
 function arrivals(ln, d, i, buses) {
   const t = ln.stops[i].t, T = ln.T, W = ln.dwell, c = ln.cycle, last = ln.stops.length - 1;
   const target = d === 0 ? t : T + W + (T - t);
@@ -190,22 +190,22 @@ function arrivals(ln, d, i, buses) {
     const p = b.phase, el = (((p - target) % c) + c) % c;
     let w = (((target - p) % c) + c) % c;
     const inBase = b.waiting && ((i === last && b.dir === 0) || (i === 0 && b.dir === 1));
-    if (boarding && !inBase && w < 0.2) w += c;   // un camión que acaba de salir de la base ya no cuenta como próximo
+    if (boarding && !inBase && w < 0.2) w += c;   // un camion que acaba de salir de la base ya no cuenta como proximo
     const dep = inBase ? (b.dir === 1 ? c - p : T + W - p) : null;
     let text = 'va en sentido contrario';
     if (d === 0 && p >= 2 * T + W) text = 'en la base de ' + ln.stops[0].n;
     else if (d === 1 && p >= T && p < T + W) text = 'en la base de ' + ln.stops[last].n;
     else if (d === 0 && p < T && p <= target) {
       let j = 0; ln.stops.forEach((s, k) => { if (s.t <= p) j = k; });
-      text = (i - j <= 1 ? 'es la próxima parada' : 'a ' + (i - j) + ' paradas') + ' (viene de ' + ln.stops[j].n + ')';
+      text = (i - j <= 1 ? 'es la pr\u00f3xima parada' : 'a ' + (i - j) + ' paradas') + ' (viene de ' + ln.stops[j].n + ')';
     } else if (d === 1 && p >= T + W && p <= target) {
       const m = T - (p - T - W); let j = 0; ln.stops.forEach((s, k) => { if (s.t <= m) j = k; });
-      text = (j - i <= 0 ? 'es la próxima parada' : 'a ' + (j - i + 1) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, last)].n + ')';
+      text = (j - i <= 0 ? 'es la pr\u00f3xima parada' : 'a ' + (j - i + 1) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, last)].n + ')';
     }
     return { w, bus: b, here: inBase || (i !== 0 && i !== last && el < STOP_WAIT), inBase, board: inBase && boarding, dep, text };
   }).sort((x, y) => x.w - y.w);
 }
-// Minutos para los próximos camiones. En la base cuenta también el que está esperando (w = minutos para que salga).
+// Minutos para los proximos camiones. En la base cuenta tambien el que esta esperando (w = minutos para que salga).
 const waits = (ln, d, i, buses) => arrivals(ln, d, i, buses).filter(a => !a.here || a.board).map(a => a.w);
 
 // ---------- Mi parada ----------
@@ -221,8 +221,8 @@ function renderFav() {
   const ln = LINES[fav.l], st = ln.stops[fav.i];
   const w = waits(ln, fav.d, fav.i, state.buses)[0];
   const dest = fav.d === 0 ? ln.stops[ln.stops.length - 1].n : ln.stops[0].n;
-  const txt = w === undefined ? '—' : (w <= 1 ? 'Llegando' : mins(w) + ' min');
-  el.innerHTML = '<button class="favcard"><span>⭐ Mi parada</span><b>' + st.n + '</b><small>' + ln.short + ' → ' + dest + '</small><em>' + txt + '</em></button>';
+  const txt = w === undefined ? '\u2014' : (w <= 1 ? 'Llegando' : mins(w) + ' min');
+  el.innerHTML = '<button class="favcard"><span>\u2b50 Mi parada</span><b>' + st.n + '</b><small>' + ln.short + ' \u2192 ' + dest + '</small><em>' + txt + '</em></button>';
   el.firstChild.onclick = () => { lineIdx = fav.l; dir = fav.d; selStop = fav.i; viewIdx = 0; clearBuses(); drawAll(); state.map.setView([st.lat, st.lng], 16); };
 }
 
@@ -251,7 +251,7 @@ function renderTabs() {
 
 function dirButtons() {
   const s = LINES[lineIdx].stops;
-  return '<div class="dirs">' + [[0, s[0].n + ' → ' + s[s.length - 1].n], [1, s[s.length - 1].n + ' → ' + s[0].n]]
+  return '<div class="dirs">' + [[0, s[0].n + ' \u2192 ' + s[s.length - 1].n], [1, s[s.length - 1].n + ' \u2192 ' + s[0].n]]
     .map(([d, label]) => '<button class="dir' + (d === dir ? ' active' : '') + '" data-d="' + d + '">' + label + '</button>').join('') + '</div>';
 }
 function bindDirs(el) {
@@ -259,9 +259,9 @@ function bindDirs(el) {
 }
 function etaText(arr) {
   const h = arr.find(x => x.here), n = arr.find(x => !x.here);
-  if (h && h.board) return '<div class="eta here"><b>En la estación</b><small>Sale ~' + inMin(h.dep) + '</small></div>';
-  if (h) return '<div class="eta here"><b>En la estación</b><small>' + h.bus.id + (n ? ' · sig. ' + inMin(n.w) : '') + '</small></div>';
-  if (!n) return '<div class="eta late"><b>—</b><small>sin datos</small></div>';
+  if (h && h.board) return '<div class="eta here"><b>En la estaci\u00f3n</b><small>Sale ~' + inMin(h.dep) + '</small></div>';
+  if (h) return '<div class="eta here"><b>En la estaci\u00f3n</b><small>' + h.bus.id + (n ? ' \u00b7 sig. ' + inMin(n.w) : '') + '</small></div>';
+  if (!n) return '<div class="eta late"><b>\u2014</b><small>sin datos</small></div>';
   return n.w <= 1 ? '<div class="eta soon"><b>Llegando</b><small>llega ' + inMin(n.w) + '</small></div>'
     : '<div class="eta"><b>' + mins(n.w) + ' min</b><small>Llega a las ' + inMin(n.w) + '</small></div>';
 }
@@ -280,9 +280,9 @@ function renderView() {
       const st = ln.stops[i], arr = arrivals(ln, dir, i, buses);
       const isFav = fav && fav.l === lineIdx && fav.i === i && fav.d === dir;
       return '<div class="stop' + (i === selStop ? ' selected' : '') + '" data-i="' + i + '" style="--c:' + ln.color + '">' +
-        '<span class="dot"></span><span class="name">' + st.n + (st.tr ? '<span class="tr">↔ Transferencia</span>' : '') +
-        '<span class="sub">' + km(st.d) + ' km · ' + subTxt(arr) + '</span></span>' + etaText(arr) +
-        '<span class="star' + (isFav ? ' on' : '') + '" data-i="' + i + '">' + (isFav ? '★' : '☆') + '</span></div>';
+        '<span class="dot"></span><span class="name">' + st.n + (st.tr ? '<span class="tr">\u2194 Transferencia</span>' : '') +
+        '<span class="sub">' + km(st.d) + ' km \u00b7 ' + subTxt(arr) + '</span></span>' + etaText(arr) +
+        '<span class="star' + (isFav ? ' on' : '') + '" data-i="' + i + '">' + (isFav ? '\u2605' : '\u2606') + '</span></div>';
     }).join('') + '</div>';
     bindDirs(el);
     el.querySelectorAll('.stop').forEach(r => {
@@ -293,14 +293,14 @@ function renderView() {
 
   else if (viewIdx === 1) {
     el.innerHTML = '<div class="stops">' + buses.filter(b => b.line === ln.id).map(b => busCard(ln, b)).join('') +
-      '</div><p class="note">4 camiones por línea. Dos camiones solo se cruzan cuando uno va y el otro viene.</p>';
+      '</div><p class="note">4 camiones por l\u00ednea. Dos camiones solo se cruzan cuando uno va y el otro viene.</p>';
   }
 
   else if (viewIdx === 2) {
     const opts = sel => ln.stops.map((s, i) => '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + s.n + '</option>').join('');
     if (trip.b >= ln.stops.length || trip.a >= ln.stops.length) trip = { a: 0, b: ln.stops.length - 1 };
     el.innerHTML = '<div class="trip"><label>Salgo de<select id="selA">' + opts(trip.a) + '</select></label>' +
-      '<button id="swap" class="swap" aria-label="Invertir">⇅</button>' +
+      '<button id="swap" class="swap" aria-label="Invertir">\u21c5</button>' +
       '<label>Voy a<select id="selB">' + opts(trip.b) + '</select></label></div><div id="tripRes"></div>';
     document.getElementById('selA').onchange = e => { trip.a = +e.target.value; updateTrip(); };
     document.getElementById('selB').onchange = e => { trip.b = +e.target.value; updateTrip(); };
@@ -312,14 +312,14 @@ function renderView() {
     const i = Math.min(schedStop, ln.stops.length - 1);
     const opts = ln.stops.map((s, k) => '<option value="' + k + '"' + (k === i ? ' selected' : '') + '>' + s.n + '</option>').join('');
     const w = waits(ln, dir, i, buses);
-    // Próximos camiones: los de este ciclo y los del siguiente (cada 20 min)
+    // Proximos camiones: los de este ciclo y los del siguiente (cada 20 min)
     const list = [];
     for (let r = 0; r < 2; r++) w.forEach(x => list.push(x + r * ln.cycle));
     const next = list.sort((a, b) => a - b).slice(0, 6);
     el.innerHTML = dirButtons() + '<label class="lab">Parada<select id="selS">' + opts + '</select></label>' +
-      '<div class="card"><b>Próximos camiones en ' + ln.stops[i].n + '</b><ul class="times">' +
+      '<div class="card"><b>Pr\u00f3ximos camiones en ' + ln.stops[i].n + '</b><ul class="times">' +
       next.map(x => '<li><span>' + inMin(x) + '</span><small>en ' + mins(x) + ' min</small></li>').join('') + '</ul>' +
-      '<p class="note">Estimación: pasa un camión cada ' + mins(ln.headway) + ' min aproximadamente.</p></div>';
+      '<p class="note">Estimaci\u00f3n: pasa un cami\u00f3n cada ' + mins(ln.headway) + ' min aproximadamente.</p></div>';
     bindDirs(el);
     document.getElementById('selS').onchange = e => { schedStop = +e.target.value; selStop = schedStop; renderView(); drawStatic(); };
   }
@@ -338,7 +338,7 @@ function renderView() {
       '<table class="tbl"><tr><th>Parada</th><th>km</th><th>min</th></tr>' + rows + '</table>' +
       '<p class="note">' + (ln.real ? 'Tiempos medidos en un recorrido real.' : 'Tiempos estimados con la velocidad promedio real de L2.') + ' ' +
       (ln.k === 1 ? 'Distancias por calles.' : 'Distancias estimadas (sin internet para trazar por calles).') +
-      ' Línea ' + other.short + ': ' + other.km.toFixed(1) + ' km, ' + mins(other.T) + ' min.</p>';
+      ' L\u00ednea ' + other.short + ': ' + other.km.toFixed(1) + ' km, ' + mins(other.T) + ' min.</p>';
   }
 }
 
@@ -353,12 +353,12 @@ function updateTrip() {
   const dest = d === 0 ? ln.stops[ln.stops.length - 1].n : ln.stops[0].n;
   el.innerHTML = '<div class="card"><div class="stats">' +
     '<div><b>' + km(distM) + ' km</b><small>distancia</small></div>' +
-    '<div><b>' + mins(ride) + ' min</b><small>en camión</small></div>' +
-    '<div><b>' + (w <= 1 ? 'Ya' : mins(w) + ' min') + '</b><small>próximo camión</small></div></div>' +
-    '<p class="note">Dirección ' + dest + '. Llegarías a ' + B.n + ' hacia las <b>' + inMin(w + ride) + '</b> (' + mins(w + ride) + ' min en total).</p></div>';
+    '<div><b>' + mins(ride) + ' min</b><small>en cami\u00f3n</small></div>' +
+    '<div><b>' + (w <= 1 ? 'Ya' : mins(w) + ' min') + '</b><small>pr\u00f3ximo cami\u00f3n</small></div></div>' +
+    '<p class="note">Direcci\u00f3n ' + dest + '. Llegar\u00edas a ' + B.n + ' hacia las <b>' + inMin(w + ride) + '</b> (' + mins(w + ride) + ' min en total).</p></div>';
 }
 
-// Capa fija: línea y paradas
+// Capa fija: linea y paradas
 function drawStatic() {
   const ln = LINES[lineIdx];
   if (state.poly) state.map.removeLayer(state.poly);
@@ -391,7 +391,7 @@ function drawBuses(buses) {
     ids.add(b.id);
     if (state.markers[b.id]) state.markers[b.id].setLatLng([b.lat, b.lng]);
     else {
-      const icon = L.divIcon({ className: '', html: '<div class="bus-icon" style="--c:' + ln.color + '">🚌</div>', iconSize: [34, 34], iconAnchor: [17, 17] });
+      const icon = L.divIcon({ className: '', html: '<div class="bus-icon" style="--c:' + ln.color + '">\ud83d\ude8c</div>', iconSize: [34, 34], iconAnchor: [17, 17] });
       state.markers[b.id] = L.marker([b.lat, b.lng], { icon, zIndexOffset: 1000 }).addTo(state.map).bindTooltip(b.id);
     }
   });
@@ -425,12 +425,12 @@ function exportJson() {
   else prompt('Copia esto:', txt);
 }
 function resetStops() {
-  if (!confirm('¿Borrar posiciones editadas?')) return;
+  if (!confirm('\u00bfBorrar posiciones editadas?')) return;
   try { localStorage.removeItem(STORE_KEY); LINES.forEach(l => localStorage.removeItem(ROUTE_KEY + l.id)); } catch (e) {}
   location.reload();
 }
 
-// ---------- Tarjeta de cada camión (recorrido) ----------
+// ---------- Tarjeta de cada camion (recorrido) ----------
 function busCard(ln, b) {
   const T = ln.T, S = ln.stops, last = S.length - 1, p = b.phase;
   let m, body, head;
@@ -444,18 +444,18 @@ function busCard(ln, b) {
     let j = 0; S.forEach((s, k) => { if (s.t <= m) j = k; });
     const nx = Math.min(j + 1, last), prev = b.dir === 0 ? S[j] : S[nx], next = b.dir === 0 ? S[nx] : S[j];
     const toNext = Math.abs(next.t - m), toEnd = b.dir === 0 ? T - m : m;
-    body = '<p>Pasó por <b>' + prev.n + '</b></p><p>Próxima: <b>' + next.n + '</b> · llega a las <b>' + inMin(toNext) + '</b> (' + (toNext < 1 ? 'llegando' : mins(toNext) + ' min') + ')</p>' +
+    body = '<p>Pas\u00f3 por <b>' + prev.n + '</b></p><p>Pr\u00f3xima: <b>' + next.n + '</b> \u00b7 llega a las <b>' + inMin(toNext) + '</b> (' + (toNext < 1 ? 'llegando' : mins(toNext) + ' min') + ')</p>' +
       '<p>Termina en ' + head + ' a las <b>' + inMin(toEnd) + '</b></p>';
   }
   const pct = Math.max(0, Math.min(100, m / T * 100));
-  return '<div class="bcard" style="--c:' + ln.color + '"><div class="bh"><b>🚌 ' + b.id + '</b><span>' + (b.dir === 0 ? '→ ' : '← ') + head + '</span></div>' +
+  return '<div class="bcard" style="--c:' + ln.color + '"><div class="bh"><b>\ud83d\ude8c ' + b.id + '</b><span>' + (b.dir === 0 ? '\u2192 ' : '\u2190 ') + head + '</span></div>' +
     '<div class="bar"><i style="width:' + pct + '%"></i>' + S.map(s => '<u style="left:' + (s.t / T * 100) + '%"></u>').join('') +
-    '<span class="bm" style="left:' + pct + '%">🚌</span></div>' + body + '</div>';
+    '<span class="bm" style="left:' + pct + '%">\ud83d\ude8c</span></div>' + body + '</div>';
 }
 
-// ---------- Ubicación del usuario ----------
-// El permiso se pregunta UNA sola vez (la primera vez que abres la app). Después se activa solo.
-const GEO_KEY = 'mr_geo_v1';   // sin valor = nunca preguntado · 'asked' = ya se preguntó · 'granted' = permitido · 'denied' = negado
+// ---------- Ubicacion del usuario ----------
+// El permiso se pregunta UNA sola vez (la primera vez que abres la app). Despues se activa solo.
+const GEO_KEY = 'mr_geo_v1';   // sin valor = nunca preguntado - 'asked' = ya se pregunto - 'granted' = permitido - 'denied' = negado
 const geoGet = () => { try { return localStorage.getItem(GEO_KEY); } catch (e) { return null; } };
 const geoSet = v => { try { localStorage.setItem(GEO_KEY, v); } catch (e) {} };
 const loc = { pos: null, acc: 0, marker: null, circle: null, trail: null, pts: [], watch: null, near: null, answer: null, err: null };
@@ -470,7 +470,7 @@ function startGeo() {
     if (e.code === 1) {                          // permiso negado
       if (loc.watch !== null) navigator.geolocation.clearWatch(loc.watch);
       loc.watch = null; geoSet('denied'); loc.err = 'denied';
-    } else if (!loc.pos) loc.err = 'fail';       // sin señal por ahora: sigue intentando solo
+    } else if (!loc.pos) loc.err = 'fail';       // sin senal por ahora: sigue intentando solo
     renderNear();
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
   renderNear();
@@ -483,7 +483,7 @@ function onPos(p) {
   if (!loc.marker) {
     loc.circle = L.circle(ll, { radius: loc.acc, color: '#1a73e8', weight: 1, fillOpacity: .12 }).addTo(state.map);
     loc.trail = L.polyline([], { color: '#1a73e8', weight: 4, dashArray: '2 8', opacity: .8 }).addTo(state.map);
-    loc.marker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 2000 }).addTo(state.map).bindTooltip('Tú estás aquí');
+    loc.marker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), zIndexOffset: 2000 }).addTo(state.map).bindTooltip('T\u00fa est\u00e1s aqu\u00ed');
   }
   loc.marker.setLatLng(ll); loc.circle.setLatLng(ll).setRadius(loc.acc);
   const last = loc.pts[loc.pts.length - 1];
@@ -507,15 +507,15 @@ function updateNear() {
   }
   renderNear();
 }
-// El usuario confirma que el camión ya está: se ajusta el reloj de la línea.
-// - En una parada normal: el camión llega ahora.
-// - En una base (Llanitos / Tecnológico): el camión está DETENIDO esperando y le faltan "left" min para salir (no sale de inmediato).
+// El usuario confirma que el camion ya esta: se ajusta el reloj de la linea.
+// - En una parada normal: el camion llega ahora.
+// - En una base (Llanitos / Tecnologico): el camion esta DETENIDO esperando y le faltan "left" min para salir (no sale de inmediato).
 function syncTo(li, i, d, left) {
   const ln = LINES[li], last = ln.stops.length - 1, c = ln.cycle;
   const base = (i === 0 && d === 0) || (i === last && d === 1);
   let best;
   if (base) {
-    const target = d === 0 ? c - left : ln.T + ln.dwell - left;   // fase en que el camión espera en la base con "left" min por salir
+    const target = d === 0 ? c - left : ln.T + ln.dwell - left;   // fase en que el camion espera en la base con "left" min por salir
     const diff = b => { let x = (target - b.phase) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return x; };
     best = fetchBuses().filter(b => b.line === ln.id).map(diff).reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
   } else {
@@ -532,10 +532,10 @@ function renderNear() {
   if (!el) return;
   const bind = (sel, fn) => { const b = el.querySelector(sel); if (b) b.onclick = fn; };
   if (!loc.pos) {
-    el.innerHTML = loc.err === 'denied' ? '<div class="near warn">📍 Sin permiso de ubicación. Actívalo en los ajustes del teléfono. <button class="nbtn" id="nAsk">Reintentar</button></div>'
-      : loc.err === 'fail' ? '<div class="near warn">📍 No se pudo obtener tu ubicación. <button class="nbtn" id="nAsk">Reintentar</button></div>'
-      : loc.watch !== null ? '<div class="near">📍 Buscando tu ubicación…</div>'
-      : '<button class="near ask" id="nAsk">📍 Activar mi ubicación para saber tu parada</button>';
+    el.innerHTML = loc.err === 'denied' ? '<div class="near warn">\ud83d\udccd Sin permiso de ubicaci\u00f3n. Act\u00edvalo en los ajustes del tel\u00e9fono. <button class="nbtn" id="nAsk">Reintentar</button></div>'
+      : loc.err === 'fail' ? '<div class="near warn">\ud83d\udccd No se pudo obtener tu ubicaci\u00f3n. <button class="nbtn" id="nAsk">Reintentar</button></div>'
+      : loc.watch !== null ? '<div class="near">\ud83d\udccd Buscando tu ubicaci\u00f3n\u2026</div>'
+      : '<button class="near ask" id="nAsk">\ud83d\udccd Activar mi ubicaci\u00f3n para saber tu parada</button>';
     bind('#nAsk', () => { loc.err = null; if (geoGet() === null) askPerm(); else startGeo(); });
     return;
   }
@@ -543,28 +543,28 @@ function renderNear() {
   const base = n.i === 0 || n.i === last;
   const dirs = n.i === 0 ? [0] : n.i === last ? [1] : [0, 1];
   const lab = d => 'hacia ' + (d === 0 ? S[last].n : S[0].n);
-  const head = '<div class="nh"><b>📍 ' + st.n + '</b><small>' + ln.short + ' · a ' + Math.round(n.d) + ' m de ti</small></div>';
+  const head = '<div class="nh"><b>\ud83d\udccd ' + st.n + '</b><small>' + ln.short + ' \u00b7 a ' + Math.round(n.d) + ' m de ti</small></div>';
   const rows = () => dirs.map(d => {
     const a = arrivals(ln, d, n.i, state.buses).find(x => !x.here);
-    return a ? '<div class="nrow"><span>' + lab(d) + '<small>' + a.bus.id + ' · ' + (base ? 'sale' : 'llega') + ' a las ' + inMin(a.w) + '</small></span><b class="cd" data-ts="' + (Date.now() + a.w * 60000) + '"></b></div>' : '';
+    return a ? '<div class="nrow"><span>' + lab(d) + '<small>' + a.bus.id + ' \u00b7 ' + (base ? 'sale' : 'llega') + ' a las ' + inMin(a.w) + '</small></span><b class="cd" data-ts="' + (Date.now() + a.w * 60000) + '"></b></div>' : '';
   }).join('');
   let html;
-  if (n.d > 250) html = head + '<p class="nq">Aún no estás en la parada. Si sales ahora, el siguiente MetroRed pasa en:</p>' + rows();
+  if (n.d > 250) html = head + '<p class="nq">A\u00fan no est\u00e1s en la parada. Si sales ahora, el siguiente MetroRed pasa en:</p>' + rows();
   else if (loc.answer && loc.answer.ask !== undefined) {
-    // Ya está en la base: se pregunta hace cuánto llegó para no hacerlo salir de inmediato.
+    // Ya esta en la base: se pregunta hace cuanto llego para no hacerlo salir de inmediato.
     const W = Math.round(ln.dwell);
-    const chips = [['Recién llegó', W], ['Hace ~5 min', W - 5], ['Hace ~10 min', W - 10], ['Ya va a salir', 2]];
-    html = head + '<p class="nq">¿Hace cuánto llegó a la base? Aquí espera de 15 a 20 min antes de salir.</p><div class="nb">' +
+    const chips = [['Reci\u00e9n lleg\u00f3', W], ['Hace ~5 min', W - 5], ['Hace ~10 min', W - 10], ['Ya va a salir', 2]];
+    html = head + '<p class="nq">\u00bfHace cu\u00e1nto lleg\u00f3 a la base? Aqu\u00ed espera de 15 a 20 min antes de salir.</p><div class="nb">' +
       chips.map(c => '<button class="nbtn y" data-left="' + c[1] + '">' + c[0] + '</button>').join('') + '<button class="nbtn" id="nCancel">Cancelar</button></div>';
   }
   else if (loc.answer && loc.answer.yes !== undefined) {
     const d = loc.answer.yes, h = arrivals(ln, d, n.i, state.buses).find(x => x.here);
-    if (h && h.board) html = head + '<div class="nhere">🚌 Se encuentra en la base</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale hacia las <b>' + inMin(h.dep) + '</b> (en ' + mins(h.dep) + ' min). En la base espera de 15 a 20 min.</p><button class="nbtn" id="nLeft">Ya salió</button>';
-    else if (h) html = head + '<div class="nhere">🚌 Se encuentra en la estación</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale en un momento.</p>';
-    else { loc.answer = 'no'; html = head + '<p class="nq">El MetroRed ya salió. El siguiente ' + (base ? 'sale' : 'llega') + ' en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya llegó otro</button>'; }
-  } else if (loc.answer === 'no') html = head + '<p class="nq">El MetroRed ' + (base ? 'saldrá' : 'llegará') + ' en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya llegó</button>';
-  else html = head + '<p class="nq">' + (base ? '¿Ya está el MetroRed en la base?' : '¿Ya está el MetroRed en esta parada?') + '</p><div class="nb">' +
-    dirs.map(d => '<button class="nbtn y" data-y="' + d + '">' + (base ? 'Sí, ya está aquí' : 'Sí, va ' + lab(d)) + '</button>').join('') + '<button class="nbtn" id="nNo">Todavía no</button></div>';
+    if (h && h.board) html = head + '<div class="nhere">\ud83d\ude8c Se encuentra en la base</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale hacia las <b>' + inMin(h.dep) + '</b> (en ' + mins(h.dep) + ' min). En la base espera de 15 a 20 min.</p><button class="nbtn" id="nLeft">Ya sali\u00f3</button>';
+    else if (h) html = head + '<div class="nhere">\ud83d\ude8c Se encuentra en la estaci\u00f3n</div><p class="nq">' + h.bus.id + ' ' + lab(d) + '. Sale en un momento.</p>';
+    else { loc.answer = 'no'; html = head + '<p class="nq">El MetroRed ya sali\u00f3. El siguiente ' + (base ? 'sale' : 'llega') + ' en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya lleg\u00f3 otro</button>'; }
+  } else if (loc.answer === 'no') html = head + '<p class="nq">El MetroRed ' + (base ? 'saldr\u00e1' : 'llegar\u00e1') + ' en:</p>' + rows() + '<button class="nbtn" id="nYes">Ya lleg\u00f3</button>';
+  else html = head + '<p class="nq">' + (base ? '\u00bfYa est\u00e1 el MetroRed en la base?' : '\u00bfYa est\u00e1 el MetroRed en esta parada?') + '</p><div class="nb">' +
+    dirs.map(d => '<button class="nbtn y" data-y="' + d + '">' + (base ? 'S\u00ed, ya est\u00e1 aqu\u00ed' : 'S\u00ed, va ' + lab(d)) + '</button>').join('') + '<button class="nbtn" id="nNo">Todav\u00eda no</button></div>';
   el.innerHTML = '<div class="near">' + html + '</div>';
   el.querySelectorAll('[data-y]').forEach(b => b.onclick = () => {
     const d = +b.dataset.y;
@@ -590,7 +590,7 @@ function init() {
   LINES.forEach(l => setGeom(l, straightGeom(l), false));
   trip = { a: 0, b: LINES[0].stops.length - 1 };
   state.map = L.map('map', { zoomControl: false }).setView([21.93, -99.99], 13);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(state.map);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '\u00a9 OpenStreetMap' }).addTo(state.map);
   drawAll();
   fitLine();
   LINES.forEach(loadRoute);
@@ -608,7 +608,7 @@ function init() {
   document.getElementById('permNo').onclick = () => { geoSet('asked'); document.getElementById('perm').hidden = true; renderNear(); };
   document.getElementById('locBtn').onclick = () => loc.pos ? state.map.setView(loc.pos, 16) : (geoGet() === null ? askPerm() : startGeo());
   renderNear();
-  // El permiso se pregunta solo la primera vez. Si ya lo diste, se activa solo; si dijiste "Ahora no", solo con el botón 📍.
+  // El permiso se pregunta solo la primera vez. Si ya lo diste, se activa solo; si dijiste "Ahora no", solo con el boton .
   const g = geoGet();
   if (g === 'granted') startGeo(); else if (g === null) askPerm();
   setInterval(tickCd, 1000);
