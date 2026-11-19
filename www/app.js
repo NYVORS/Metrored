@@ -4,6 +4,8 @@
 // - La linea sigue las calles (OSRM) cuando hay internet.
 // - L2: minutos reales entre paradas medidos en un recorrido (salida 7:40 de Llanitos).
 // - L1: se estima con la velocidad promedio real de L2. Frecuencia de 20 min.
+// - EN LINEA: cuando alguien confirma "ya llego" el reporte se guarda en Firebase (coleccion "reportes")
+//   y todos los telefonos ajustan los camiones simulados con el ultimo reporte de cada linea.
 // ============================================================
 
 const LINES = [
@@ -42,8 +44,22 @@ const ROAD_FACTOR = 1.04;  // si la linea es recta, se estima la distancia por c
 const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 17, 19, 21, 23, 26, 28, 30, 31, 32] };
 let SPEED = 300;           // m/min (se recalcula con la calibracion)
 
-const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1', SYNC_KEY = 'mr_sync_v1';
-let sync = {};   // ajuste de reloj por linea (min) cuando el usuario confirma que el camion ya esta
+const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
+// Ultimo reporte "ya llego" de cada linea: { li, i, d, left, ts(ms), uid }. Viene de este telefono o de otros usuarios.
+// De el se calcula el ajuste de reloj de la linea (ver syncOf).
+let reports = {};
+
+// ---------- Configuracion de Firebase (la llave web no es secreta: la protegen las reglas de Firestore) ----------
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyDY00NX6OrZuAPwcpkErvNKnYAUdlL55Xg',
+  authDomain: 'red-metro-zona-media-3b465.firebaseapp.com',
+  projectId: 'red-metro-zona-media-3b465',
+  storageBucket: 'red-metro-zona-media-3b465.firebasestorage.app',
+  messagingSenderId: '261718523009',
+  appId: '1:261718523009:web:b581286040530afabc6180',
+};
+const FB_CDN = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-';
+const STALE_MIN = 20;      // despues de estos minutos el reporte se muestra como "estimado"
 let lineIdx = 0, dir = 0, selStop = null, editMode = false, viewIdx = 0, schedStop = 0;
 let trip = { a: 0, b: 0 }, fav = null;
 const state = { map: null, buses: [], markers: {}, stopMarkers: [], poly: null };
@@ -160,7 +176,7 @@ function positionAt(ln, minutes) {
 function fetchBuses() {
   const out = [];
   LINES.forEach(ln => {
-    const now = Date.now() / 60000 + (sync[ln.id] || 0);
+    const now = Date.now() / 60000 + syncOf(ln);
     for (let k = 0; k < ln.nBuses; k++) {
       const phase = (((now - k * ln.headway) % ln.cycle) + ln.cycle) % ln.cycle;
       out.push(busFromPhase(ln, k, phase));
@@ -401,10 +417,10 @@ function drawBuses(buses) {
 function refresh() {
   state.buses = fetchBuses();
   drawBuses(state.buses);
-  renderFav(); renderNear();
+  renderFav(); renderNear(); renderNet();
   if (viewIdx === 2) updateTrip(); else renderView();
 }
-function drawAll() { renderTabs(); drawStatic(); state.buses = fetchBuses(); drawBuses(state.buses); renderFav(); renderView(); }
+function drawAll() { renderTabs(); drawStatic(); state.buses = fetchBuses(); drawBuses(state.buses); renderFav(); renderView(); renderNet(); }
 function fitLine() {
   const ln = LINES[lineIdx];
   state.map.fitBounds(ln.geom, { paddingTopLeft: [20, 90], paddingBottomRight: [20, 340] });
@@ -459,7 +475,13 @@ const GEO_KEY = 'mr_geo_v1';   // sin valor = nunca preguntado - 'asked' = ya se
 const geoGet = () => { try { return localStorage.getItem(GEO_KEY); } catch (e) { return null; } };
 const geoSet = v => { try { localStorage.setItem(GEO_KEY, v); } catch (e) {} };
 const loc = { pos: null, acc: 0, marker: null, circle: null, trail: null, pts: [], watch: null, near: null, answer: null, err: null };
-function loadSync() { try { sync = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}'); } catch (e) { sync = {}; } }
+function loadReports() {
+  try { reports = JSON.parse(localStorage.getItem(REP_KEY) || '{}') || {}; } catch (e) { reports = {}; }
+  LINES.forEach((l, li) => {
+    const r = reports[l.id];
+    if (r && !(r.li === li && r.i >= 0 && r.i < l.stops.length && (r.d === 0 || r.d === 1) && r.ts > 0)) delete reports[l.id];
+  });
+}
 function askPerm() { document.getElementById('perm').hidden = false; }
 function startGeo() {
   document.getElementById('perm').hidden = true;
@@ -507,25 +529,131 @@ function updateNear() {
   }
   renderNear();
 }
-// El usuario confirma que el camion ya esta: se ajusta el reloj de la linea.
+// ---------- Reportes "ya llego" (locales + en linea) ----------
+// Un reporte dice: en el momento ts el camion estaba en la parada i, sentido d (en una base: le faltaban "left" min para salir).
+// Con el se calcula cuanto hay que adelantar el reloj de la linea para que un camion simulado coincida con ese hecho.
+// Se calcula sobre el reloj "crudo" (sin ajustes) y por eso todos los telefonos llegan al mismo resultado.
+function offsetFromReport(ln, r) {
+  const last = ln.stops.length - 1, c = ln.cycle, at = r.ts / 60000;
+  const phases = [];
+  for (let k = 0; k < ln.nBuses; k++) phases.push((((at - k * ln.headway) % c) + c) % c);
+  const base = (r.i === 0 && r.d === 0) || (r.i === last && r.d === 1);
+  if (base) {
+    const target = r.d === 0 ? c - r.left : ln.T + ln.dwell - r.left;   // fase en que el camion espera en la base con "left" min por salir
+    return phases.map(p => { let x = (target - p) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return x; })
+      .reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+  }
+  const buses = phases.map((p, k) => busFromPhase(ln, k, p));
+  return arrivals(ln, r.d, r.i, buses).map(a => a.w > c / 2 ? a.w - c : a.w)
+    .reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+}
+// Ajuste de reloj de la linea (min). Se recalcula solo cuando cambia el reporte o los tiempos de la linea.
+function syncOf(ln) {
+  const r = reports[ln.id];
+  if (!r || !ln.cycle) return 0;
+  const key = [r.ts, r.i, r.d, r.left, ln.cycle, ln.T].join('|');
+  if (ln._sk !== key) { ln._sk = key; ln._sv = offsetFromReport(ln, r); }
+  return ln._sv;
+}
+function saveReports() { try { localStorage.setItem(REP_KEY, JSON.stringify(reports)); } catch (e) {} }
+// Se queda con el reporte mas nuevo de cada linea.
+function consider(r) {
+  const ln = LINES[r.li];
+  if (!ln || !(r.i >= 0 && r.i < ln.stops.length) || (r.d !== 0 && r.d !== 1) || !(r.left >= 0 && r.left <= 30)) return false;
+  const cur = reports[ln.id];
+  if (cur && r.ts <= cur.ts) return false;
+  reports[ln.id] = r; saveReports();
+  return true;
+}
+// El usuario confirma que el camion ya esta (o que ya salio de la base): se ajusta el reloj y se avisa a los demas.
 // - En una parada normal: el camion llega ahora.
 // - En una base (Llanitos / Tecnologico): el camion esta DETENIDO esperando y le faltan "left" min para salir (no sale de inmediato).
 function syncTo(li, i, d, left) {
-  const ln = LINES[li], last = ln.stops.length - 1, c = ln.cycle;
-  const base = (i === 0 && d === 0) || (i === last && d === 1);
-  let best;
-  if (base) {
-    const target = d === 0 ? c - left : ln.T + ln.dwell - left;   // fase en que el camion espera en la base con "left" min por salir
-    const diff = b => { let x = (target - b.phase) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return x; };
-    best = fetchBuses().filter(b => b.line === ln.id).map(diff).reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
-  } else {
-    const arr = arrivals(ln, d, i, state.buses);
-    best = arr.map(a => a.w > c / 2 ? a.w - c : a.w).reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
-  }
-  sync[ln.id] = (sync[ln.id] || 0) + best;
-  try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) {}
+  const r = { li, i, d, left: Math.round(left), ts: Date.now(), uid: online.uid || 'local' };
+  consider(r);
+  publishReport(r);
   loc.answer = { yes: d };
   refresh();
+}
+
+// ---------- En linea (Firebase) ----------
+const online = { state: 'connecting', err: null, busy: false, db: null, uid: null, unsub: null, rt: null, last: {} };
+function loadScript(src) {
+  return new Promise((ok, no) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = ok; s.onerror = () => no({ code: 'sin-red' });
+    document.head.appendChild(s);
+  });
+}
+async function initOnline() {
+  if (online.busy || online.state === 'ok') return;
+  online.busy = true; online.state = 'connecting'; online.err = null; renderNet();
+  try {
+    if (typeof firebase === 'undefined') await loadScript(FB_CDN + 'app-compat.js');
+    if (!firebase.auth) await loadScript(FB_CDN + 'auth-compat.js');
+    if (!firebase.firestore) await loadScript(FB_CDN + 'firestore-compat.js');
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    if (!online.db) {
+      online.db = firebase.firestore();
+      try { online.db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) {}
+    }
+    const cred = await firebase.auth().signInAnonymously();
+    online.uid = cred.user.uid;
+    listenReports();
+  } catch (e) {
+    online.state = 'error'; online.err = (e && e.code) || 'error';
+  }
+  online.busy = false;
+  renderNet();
+  if (online.state === 'error') retryOnline();
+}
+function retryOnline() { clearTimeout(online.rt); online.rt = setTimeout(() => { if (online.state === 'error') initOnline(); }, 30000); }
+function listenReports() {
+  if (online.unsub) { online.unsub(); online.unsub = null; }
+  const cutoff = firebase.firestore.Timestamp.fromMillis(Date.now() - 3 * 3600000);
+  online.unsub = online.db.collection('reportes').where('ts', '>', cutoff).orderBy('ts', 'desc').limit(40).onSnapshot(snap => {
+    if (!snap.metadata.fromCache) { online.state = 'ok'; online.err = null; }
+    let changed = false;
+    snap.forEach(doc => {
+      const x = doc.data({ serverTimestamps: 'estimate' });
+      if (!x || !x.ts || !x.ts.toMillis) return;
+      const li = LINES.findIndex(l => l.id === x.linea), ts = x.ts.toMillis();
+      if (li < 0 || ts > Date.now() + 300000) return;
+      if (consider({ li, i: x.parada, d: x.sentido, left: x.left || 0, ts, uid: x.uid || '?' })) changed = true;
+    });
+    if (changed) refresh(); else renderNet();
+  }, err => {
+    online.state = 'error'; online.err = err.code || 'error';
+    if (online.unsub) { online.unsub(); online.unsub = null; }
+    renderNet(); retryOnline();
+  });
+}
+function publishReport(r) {
+  if (!online.db || !online.uid || !window.firebase) return;
+  const key = r.li + '|' + r.i + '|' + r.d;
+  if (online.last[key] && r.ts - online.last[key] < 20000) return;   // evita doble toque
+  online.last[key] = r.ts;
+  online.db.collection('reportes').add({
+    linea: LINES[r.li].id, sentido: r.d, parada: r.i, left: r.left,
+    ts: firebase.firestore.FieldValue.serverTimestamp(), uid: online.uid,
+  }).catch(e => { online.state = 'error'; online.err = (e && e.code) || 'error'; renderNet(); retryOnline(); });
+}
+// Linea de estado bajo el mapa: dice si hay conexion y que tan reciente es el ultimo reporte de la linea que se ve.
+function renderNet() {
+  const el = document.getElementById('net');
+  if (!el) return;
+  const ln = LINES[lineIdx], r = reports[ln.id];
+  let html;
+  if (r) {
+    const age = Math.max(0, (Date.now() - r.ts) / 60000), s = ln.stops[r.i];
+    const who = r.uid === online.uid ? 'por ti' : (r.uid === 'local' ? 'en este tel\u00e9fono' : 'por otro usuario');
+    const when = age < 1 ? 'hace un momento' : 'hace ' + mins(age) + ' min';
+    html = (age <= STALE_MIN ? '<b>Confirmado ' + when + '</b>' : '<b>Estimado</b> \u00b7 \u00faltimo reporte ' + when) +
+      ' \u00b7 ' + ln.short + ' en ' + s.n + ' (' + who + ')';
+  } else html = 'Sin reportes recientes en ' + ln.short + '. Mostrando estimaci\u00f3n.';
+  const dot = online.state === 'ok' ? '\ud83d\udfe2' : online.state === 'connecting' ? '\ud83d\udfe1' : '\u26aa';
+  const st = online.state === 'ok' ? 'En l\u00ednea' : online.state === 'connecting' ? 'Conectando\u2026' : 'Sin conexi\u00f3n con otros usuarios' + (online.err ? ' (' + online.err + ')' : '');
+  el.innerHTML = '<div class="netbar ' + online.state + '"><span>' + dot + ' ' + st + '</span><small>' + html + '</small></div>';
 }
 function renderNear() {
   const el = document.getElementById('near');
@@ -586,7 +714,7 @@ function tickCd() {
 
 function init() {
   loadOverrides();
-  loadFav(); loadSync();
+  loadFav(); loadReports();
   LINES.forEach(l => setGeom(l, straightGeom(l), false));
   trip = { a: 0, b: LINES[0].stops.length - 1 };
   state.map = L.map('map', { zoomControl: false }).setView([21.93, -99.99], 13);
@@ -613,6 +741,8 @@ function init() {
   if (g === 'granted') startGeo(); else if (g === null) askPerm();
   setInterval(tickCd, 1000);
   setInterval(refresh, 5000);
+  initOnline();
+  window.addEventListener('online', () => { if (online.state !== 'ok') initOnline(); });
 }
 
 init();
