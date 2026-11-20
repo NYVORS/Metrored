@@ -1,4 +1,4 @@
-const CACHE = 'metrored-shell-v5';
+const CACHE = 'metrored-shell-v6';
 const SHELL = ['./', './index.html', './styles.css', './app.js', './icon.png', './metrored.webmanifest'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));

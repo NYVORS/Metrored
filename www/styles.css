@@ -207,3 +207,8 @@ body.dark #map .leaflet-tile { filter: invert(0.88) hue-rotate(180deg) brightnes
 .netbar small { text-align:right; }
 .report-card h3 { margin:0; }
 h4 { margin:12px 2px 4px; font-size:13px; }
+
+.observation-buttons { flex-wrap:wrap; }
+.observation-buttons button { min-width:calc(50% - 4px); font-size:12px; }
+.learning-card { margin-top:10px; }
+.learning-card small { display:block; color:var(--muted); font-size:11px; line-height:1.4; margin-top:8px; }

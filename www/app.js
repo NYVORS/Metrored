@@ -49,6 +49,7 @@ const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v
 // De el se calcula el ajuste de reloj de la linea (ver syncOf).
 let reports = {};
 let serviceReports = [];
+let arrivalObservations = []; // observaciones comunitarias de llegada (UTC ms); no alteran la simulacion hasta validar la correspondencia de paradas
 
 // ---------- Configuracion de Firebase (la llave web no es secreta: la protegen las reglas de Firestore) ----------
 const FIREBASE_CONFIG = {
@@ -350,19 +351,24 @@ function renderView() {
 
   else if (viewIdx === 5) {
     const stopOpts = ln.stops.map((s, i) => '<option value="' + i + '">' + s.n + '</option>').join('');
-    const rLabels = { full: 'Camión lleno', delay: 'Retraso', noshow: 'No pasó' };
-    const recent = serviceReports.slice(0, 8).map(r => '<div class="history-row"><b>' + rLabels[r.type] + '</b><small>' + r.line + ' · ' + LINES[r.li].stops[r.i].n + ' · hace ' + Math.max(0, mins((Date.now() - r.ts) / 60000)) + ' min</small></div>').join('') || '<p class="note">Sin reportes recientes.</p>';
+    const statusOptions = [['now','Ya llegó'],['1','Llegó hace 1 min'],['2','Llegó hace 2 min'],['5','Llegó hace 5 min'],['notyet','Todavía no']];
+    const recent = arrivalObservations.slice(0, 10).map(r => {
+      const when = new Date(r.observedAtMs || r.ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
+      const label = r.status === 'notyet' ? 'Todavía no' : (r.ageMin ? 'Llegó hace ' + r.ageMin + ' min' : 'Ya llegó');
+      return '<div class="history-row"><b>' + label + '</b><small>' + r.line + ' · ' + LINES[r.li].stops[r.i].n + ' · ' + when + '</small></div>';
+    }).join('') || '<p class="note">Aún no hay actualizaciones recientes.</p>';
+    const learning = summarizeObservations();
     el.innerHTML = '<div class="card report-card"><label>Parada<select id="repStop">' + stopOpts + '</select></label><label>Sentido<select id="repDir"><option value="0">Ida</option><option value="1">Vuelta</option></select></label>' +
-      '<div class="report-buttons"><button data-type="full">Camión lleno</button><button data-type="delay">Retraso</button><button data-type="noshow">No pasó</button></div><p id="repMsg" class="note"></p></div>' +
-      '<h4>Reportes recientes</h4><div id="communityReportList">' + recent + '</div>';
+      '<div class="report-buttons observation-buttons">' + statusOptions.map(x => '<button data-status="' + x[0] + '">' + x[1] + '</button>').join('') + '</div><p id="repMsg" class="note">Comparte una actualización rápida del MetroRed.</p></div>' +
+      '<h4>Actualizaciones recientes</h4><div id="communityReportList">' + recent + '</div>' +
+      '<div class="card learning-card"><b>Aprendizaje comunitario</b><p class="note">' + learning + '</p><small>Las observaciones se guardan con hora UTC y se muestran en hora local de San Luis Potosí. Los intervalos se analizan, pero aún no ajustan automáticamente la simulación porque la secuencia de paradas necesita validación.</small></div>';
     if (selStop !== null) document.getElementById('repStop').value = selStop;
-    el.querySelectorAll('[data-type]').forEach(b => b.onclick = async () => {
-      const type = b.dataset.type, i = +document.getElementById('repStop').value, d = +document.getElementById('repDir').value;
-      if (!confirm('¿Enviar reporte de ' + rLabels[type].toLowerCase() + ' en ' + ln.stops[i].n + '?')) return;
-      const msg = document.getElementById('repMsg');
-      msg.textContent = 'Enviando…';
-      const shared = await submitServiceReport({ type, li: lineIdx, i, d, ts: Date.now() });
-      if (viewIdx === 5) { renderView(); const m = document.getElementById('repMsg'); if (m) m.textContent = shared ? 'Reporte enviado.' : 'Sin conexión: no se pudo enviar.'; }
+    el.querySelectorAll('[data-status]').forEach(b => b.onclick = async () => {
+      const status = b.dataset.status, i = +document.getElementById('repStop').value, d = +document.getElementById('repDir').value;
+      const ageMin = status === 'now' ? 0 : status === 'notyet' ? null : +status;
+      const msg = document.getElementById('repMsg'); msg.textContent = 'Enviando actualización…';
+      const shared = await submitArrivalObservation({ li: lineIdx, i, d, status, ageMin, ts: Date.now(), observedAtMs: status === 'notyet' ? Date.now() : Date.now() - ageMin * 60000 });
+      if (viewIdx === 5) { renderView(); const m = document.getElementById('repMsg'); if (m) m.textContent = shared ? 'Actualización enviada. ¡Gracias!' : 'No se pudo enviar (sin conexión o error).'; }
     });
   }
 
@@ -641,19 +647,26 @@ function retryOnline() { clearTimeout(online.rt); online.rt = setTimeout(() => {
 function listenReports() {
   if (online.unsub) { online.unsub(); online.unsub = null; }
   const cutoff = firebase.firestore.Timestamp.fromMillis(Date.now() - 3 * 3600000);
-  online.unsub = online.db.collection('reportes').where('ts', '>', cutoff).orderBy('ts', 'desc').limit(40).onSnapshot(snap => {
+  online.unsub = online.db.collection('reportes').where('ts', '>', cutoff).orderBy('ts', 'desc').limit(150).onSnapshot(snap => {
     if (!snap.metadata.fromCache) { online.state = 'ok'; online.err = null; }
     let changed = false;
     serviceReports = [];
+    arrivalObservations = [];
     snap.forEach(doc => {
       const x = doc.data({ serverTimestamps: 'estimate' });
-      if (!x || (x.tipo && !['arrival','full','delay','noshow'].includes(x.tipo)) || !x.ts || !x.ts.toMillis) return;
+      if (!x || !x.ts || !x.ts.toMillis) return;
       const li = LINES.findIndex(l => l.id === x.linea), ts = x.ts.toMillis();
-      if (li < 0 || ts > Date.now() + 300000) return;
-      if (x.tipo && ['full','delay','noshow'].includes(x.tipo)) { if (x.parada >= 0 && x.parada < LINES[li].stops.length) serviceReports.push({type:x.tipo,li,line:LINES[li].short,i:x.parada,d:x.sentido,ts,uid:x.uid||'?'}); return; }
-      if (consider({ li, i: x.parada, d: x.sentido, left: x.left || 0, ts, uid: x.uid || '?' })) changed = true;
+      if (li < 0 || ts > Date.now() + 300000 || x.parada < 0 || x.parada >= LINES[li].stops.length) return;
+      if (x.tipo === 'observacion_llegada') {
+        const observedAtMs = Number(x.observedAtMs) || ts;
+        arrivalObservations.push({ li, line: LINES[li].short, i: x.parada, d: x.sentido, status: x.estado || 'now', ageMin: Number.isFinite(x.ageMin) ? x.ageMin : 0, ts, observedAtMs, uid: x.uid || '?' });
+        return;
+      }
+      if (x.tipo && ['full','delay','noshow'].includes(x.tipo)) { serviceReports.push({type:x.tipo,li,line:LINES[li].short,i:x.parada,d:x.sentido,ts,uid:x.uid||'?'}); return; }
+      if (x.tipo === 'arrival' && consider({ li, i: x.parada, d: x.sentido, left: x.left || 0, ts, uid: x.uid || '?' })) changed = true;
     });
     if (changed) refresh(); else { renderNet(); if (viewIdx === 5) renderView(); }
+    if (viewIdx === 5) renderView();
   }, err => {
     online.state = 'error'; online.err = err.code || 'error';
     if (online.unsub) { online.unsub(); online.unsub = null; }
@@ -670,6 +683,40 @@ function publishReport(r) {
     ts: firebase.firestore.FieldValue.serverTimestamp(), expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 3 * 3600000), uid: online.uid,
   }).catch(e => { online.state = 'error'; online.err = (e && e.code) || 'error'; renderNet(); retryOnline(); });
 }
+function submitArrivalObservation(r) {
+  const observation = { ...r, line: LINES[r.li].short, uid: online.uid || 'local' };
+  try { const arr = JSON.parse(localStorage.getItem('mr_arrival_observations_v1') || '[]'); arr.push(observation); localStorage.setItem('mr_arrival_observations_v1', JSON.stringify(arr.slice(-100))); } catch (e) {}
+  if (!online.db || !online.uid || !window.firebase) return Promise.resolve(false);
+  return online.db.collection('reportes').add({ tipo: 'observacion_llegada', linea: LINES[r.li].id, sentido: r.d, parada: r.i, estado: r.status, ageMin: r.ageMin, observedAtMs: r.observedAtMs, ts: firebase.firestore.FieldValue.serverTimestamp(), expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 3 * 3600000), uid: online.uid })
+    .then(() => true).catch(e => { online.err = e.code || 'error'; renderNet(); retryOnline(); return false; });
+}
+function loadLocalArrivalObservations() {
+  try {
+    const arr = JSON.parse(localStorage.getItem('mr_arrival_observations_v1') || '[]');
+    arrivalObservations = arr.filter(r => r && r.li >= 0 && r.li < LINES.length && r.i >= 0 && r.i < LINES[r.li].stops.length && r.ts > Date.now() - 3 * 3600000).sort((a,b) => b.ts-a.ts).slice(0,100);
+  } catch (e) { arrivalObservations = []; }
+}
+function summarizeObservations() {
+  const valid = arrivalObservations.filter(r => r.status !== 'notyet' && Number.isFinite(r.observedAtMs)).slice(0, 150);
+  const byUserLineDir = new Map();
+  valid.forEach(r => { const key = r.li + '|' + r.d + '|' + r.uid; if (!byUserLineDir.has(key)) byUserLineDir.set(key, []); byUserLineDir.get(key).push(r); });
+  const intervals = [];
+  byUserLineDir.forEach(list => {
+    list.sort((a,b) => a.observedAtMs - b.observedAtMs);
+    for (let j=1;j<list.length;j++) {
+      const a=list[j-1], b=list[j], dt=(b.observedAtMs-a.observedAtMs)/60000;
+      const adjacent = a.d === 0 ? b.i === a.i + 1 : b.i === a.i - 1;
+      if (a.i !== b.i && adjacent && dt >= 0.5 && dt <= 25) intervals.push({li:a.li,from:a.i,to:b.i,minutes:dt});
+    }
+  });
+  if (!valid.length) return 'Sin observaciones de llegada suficientes para estimar intervalos.';
+  const pairs = new Map(); intervals.forEach(x => { const k=x.li+'|'+Math.min(x.from,x.to)+'|'+Math.max(x.from,x.to); if(!pairs.has(k))pairs.set(k,[]);pairs.get(k).push(x.minutes); });
+  const median = values => { const a=values.slice().sort((x,y)=>x-y), m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2; };
+  const trained = [...pairs.entries()].filter(([,a])=>a.length>=3).map(([key,a])=>{const [li,lo,hi]=key.split('|').map(Number); return {li,lo,hi,n:a.length,med:median(a)};});
+  const summary = trained.slice(0,4).map(x => LINES[x.li].stops[x.lo].n+' ↔ '+LINES[x.li].stops[x.hi].n+': mediana '+x.med.toFixed(1)+' min ('+x.n+' muestras)').join(' · ');
+  return valid.length + ' observaciones recientes; ' + intervals.length + ' intervalos válidos detectados. ' + trained.length + ' segmentos tienen al menos 3 muestras y cuentan con mediana robusta.' + (summary ? ' Muestras: '+summary+'.' : '') + ' Estos resultados son experimentales y todavía no cambian la ETA automáticamente.';
+}
+
 // Linea de estado bajo el mapa: dice si hay conexion y que tan reciente es el ultimo reporte de la linea que se ve.
 function submitServiceReport(r) {
   try { const arr=JSON.parse(localStorage.getItem('mr_service_reports_v1')||'[]');arr.push({...r});localStorage.setItem('mr_service_reports_v1',JSON.stringify(arr.slice(-50))); } catch(e) {}
@@ -749,7 +796,7 @@ function tickCd() {
 function init() {
   loadOverrides();
   applyPrefs();
-  loadFav(); loadReports();
+  loadFav(); loadReports(); loadLocalArrivalObservations();
   LINES.forEach(l => setGeom(l, straightGeom(l), false));
   trip = { a: 0, b: LINES[0].stops.length - 1 };
   state.map = L.map('map', { zoomControl: false }).setView([21.93, -99.99], 13);
