@@ -37,7 +37,6 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
   max-height: 58vh; display: flex; flex-direction: column;
   transition: max-height .25s ease;
 }
-.sheet.collapsed { max-height: 150px; }
 .sheet { overflow: hidden; }
 .grab { align-self: center; width: 44px; height: 5px; border-radius: 4px; background: #d3dae0; border: 0; margin: 4px 0 10px; padding: 0; }
 
@@ -82,7 +81,6 @@ html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Se
 .stop.selected { background:#e8f7ed; }
 .tr { display:block; font-size:11px; color:var(--green-dark); font-weight:700; margin-top:2px; }
 .stop-pin.tr { width:20px; height:20px; border-color:#064d2e; background:#7ed957; }
-.disclaimer { font-size:10.5px; color:var(--muted); margin:8px 2px 0; text-align:center; }
 
 .editor { position:fixed; top:calc(env(safe-area-inset-top,0px) + 74px); left:12px; right:12px; z-index:11; background:#fff; border-radius:14px; padding:10px 12px; box-shadow:0 4px 16px rgba(0,0,0,.25); font-size:12px; }
 .editor span { display:block; color:var(--muted); margin:2px 0 8px; }
@@ -170,7 +168,7 @@ select { width:100%; margin-top:3px; padding:9px 6px; border-radius:10px; border
 
 /* MetroRed update: preferences, accessibility and report UI */
 .sheet.expanded { max-height: 84vh; }
-.grab { touch-action: pan-x; cursor: grab; }
+
 .settings { display:flex; gap:8px; margin:8px 0; }
 .settings button, .report-buttons button { flex:1; border:1px solid var(--line); background:var(--card, #fff); color:var(--ink); border-radius:10px; padding:10px 8px; font-weight:700; font-size:12px; }
 .report-buttons { display:flex; gap:6px; margin-top:10px; }
@@ -182,6 +180,7 @@ body.large-text { font-size:18px; }
 body.large-text .stop .name { font-size:18px; }
 body.large-text .stop .sub, body.large-text .note, body.large-text .vbtn { font-size:14px; }
 body.dark { --bg:#101a16; --ink:#e8f1ec; --muted:#9fb0a8; --line:#293831; --card:#1c2a23; color:var(--ink); }
+body.dark .grab { background:#101a16; }
 body.dark .sheet, body.dark .card, body.dark .bcard, body.dark .stats div { background:#1c2a23; color:var(--ink); }
 body.dark .tab, body.dark select, body.dark .dir, body.dark .vbtn, body.dark .settings button { background:#202e27; color:var(--ink); border-color:#35463d; }
 body.dark .tab.active { background:#e8f7ed; color:#064d2e; }
@@ -194,5 +193,17 @@ body.dark .near { color:#fff; }
 body.dark .near.warn { color:#7a4a00; }
 body.dark .report-buttons button { background:#244532; color:#e8f1ec; }
 body.dark #map .leaflet-tile { filter: invert(0.88) hue-rotate(180deg) brightness(0.86) contrast(0.9); }
-.views { overflow-x:auto; scrollbar-width:thin; }utton.vbtn { min-width:72px; flex:0 0 auto; }
-.grab { touch-action:none; }
+.views { overflow-x:auto; scrollbar-width:none; flex:none; }
+.views::-webkit-scrollbar { display:none; }
+.vbtn { min-width:72px; flex:0 0 auto; }
+/* Agarradera: zona grande, nunca se encoge y siempre queda visible arriba del panel */
+.grab { flex:none; align-self:stretch; width:100%; height:30px; margin:0; padding:0; border:0; background:var(--bg); display:flex; align-items:center; justify-content:center; touch-action:none; cursor:grab; position:sticky; top:0; z-index:2; }
+.grab span { display:block; width:44px; height:5px; border-radius:4px; background:#b9c3ca; }
+.sheet > * { flex-shrink:0; }
+.sheet > .view { flex:1 1 auto; min-height:0; }
+.sheet.collapsed { max-height:none; overflow-y:auto; }
+.sheet.collapsed #lines, .sheet.collapsed #views, .sheet.collapsed #view { display:none; }
+.netbar { flex-direction:row; justify-content:space-between; align-items:center; gap:8px; }
+.netbar small { text-align:right; }
+.report-card h3 { margin:0; }
+h4 { margin:12px 2px 4px; font-size:13px; }

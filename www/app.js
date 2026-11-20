@@ -261,7 +261,7 @@ function renderTabs() {
   });
   const vEl = document.getElementById('views');
   vEl.innerHTML = '';
-  ['Paradas', 'Recorrido', 'Viaje', 'Horarios', 'Info', 'Reportes'].forEach((v, i) => {
+  ['Paradas', 'Recorrido', 'Viaje', 'Horarios', 'Ajustes', 'Reportes'].forEach((v, i) => {
     const b = document.createElement('button');
     b.className = 'vbtn' + (i === viewIdx ? ' active' : '');
     b.textContent = v;
@@ -313,8 +313,7 @@ function renderView() {
   }
 
   else if (viewIdx === 1) {
-    el.innerHTML = '<div class="stops">' + buses.filter(b => b.line === ln.id).map(b => busCard(ln, b)).join('') +
-      '</div><p class="note">4 camiones por l\u00ednea. Dos camiones solo se cruzan cuando uno va y el otro viene.</p>';
+    el.innerHTML = '<div class="stops">' + buses.filter(b => b.line === ln.id).map(b => busCard(ln, b)).join('') + '</div>';
   }
 
   else if (viewIdx === 2) {
@@ -344,36 +343,38 @@ function renderView() {
     el.innerHTML = dirButtons() + '<label class="lab">Parada<select id="selS">' + opts + '</select></label>' +
       '<div class="card"><b>Pr\u00f3ximos camiones en ' + ln.stops[i].n + '</b><ul class="times">' +
       next.map(x => '<li><span>' + inMin(x) + '</span><small>en ' + mins(x) + ' min</small></li>').join('') + '</ul>' +
-      '<p class="note">Estimaci\u00f3n: pasa un cami\u00f3n cada ' + mins(ln.headway) + ' min aproximadamente.</p></div>';
+      '<p class="note">Cada ~' + mins(ln.headway) + ' min</p></div>';
     bindDirs(el);
     document.getElementById('selS').onchange = e => { schedStop = +e.target.value; selStop = schedStop; renderView(); drawStatic(); };
   }
 
   else if (viewIdx === 5) {
-    const stopOpts=ln.stops.map((s,i)=>'<option value=\"'+i+'\">'+s.n+'</option>').join('');
-    el.innerHTML='<div class=\"card report-card\"><h3>Reportar servicio</h3><p class=\"note\">Reportes comunitarios; no son datos oficiales ni verifican GPS.</p><label>Parada<select id=\"repStop\">'+stopOpts+'</select></label><label>Sentido<select id=\"repDir\"><option value=\"0\">Ida</option><option value=\"1\">Vuelta</option></select></label><div class=\"report-buttons\"><button data-type=\"full\">Camión lleno</button><button data-type=\"delay\">Retraso</button><button data-type=\"noshow\">No pasó</button></div><p id=\"repMsg\" class=\"note\"></p><h4>Reportes recientes en este teléfono</h4><div id=\"repHistory\"></div><h4>Reportes de la comunidad</h4><div id=\"communityReportList\"></div></div>';
-    let history=[];try{history=JSON.parse(localStorage.getItem('mr_service_reports_v1')||'[]').slice(-5).reverse();}catch(e){}
-    const rLabels={full:'Camión lleno',delay:'Retraso',noshow:'No pasó'};const rh=document.getElementById('repHistory');if(rh)rh.innerHTML=history.map(r=>'<div class=\"history-row\"><b>'+rLabels[r.type]+'</b><small>'+LINES[r.li].short+' · '+LINES[r.li].stops[r.i].n+' · '+new Date(r.ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'</small></div>').join('')||'<p class=\"note\">Aún no hay reportes.</p>';
-    const cr=document.getElementById('communityReportList');if(cr)cr.innerHTML=serviceReports.slice(0,10).map(r=>'<div class=\"history-row\"><b>'+rLabels[r.type]+'</b><small>'+r.line+' · '+LINES[r.li].stops[r.i].n+' · hace '+Math.max(0,mins((Date.now()-r.ts)/60000))+' min</small></div>').join('')||'<p class=\"note\">No hay reportes comunitarios recientes.</p>';
-    el.querySelectorAll('[data-type]').forEach(b=>b.onclick=async()=>{const type=b.dataset.type,i=+document.getElementById('repStop').value,d=+document.getElementById('repDir').value;const labels={full:'camión lleno',delay:'retraso',noshow:'no pasó'};if(!confirm('¿Enviar reporte de '+labels[type]+' en '+ln.stops[i].n+'?'))return;const msg=document.getElementById('repMsg');msg.textContent='Guardado en este teléfono…';const shared=await submitServiceReport({type,li:lineIdx,i,d,ts:Date.now()});msg.textContent=shared?'Reporte compartido con otros usuarios.':'Reporte guardado solo en este teléfono; no se compartió.';renderView();});
+    const stopOpts = ln.stops.map((s, i) => '<option value="' + i + '">' + s.n + '</option>').join('');
+    const rLabels = { full: 'Camión lleno', delay: 'Retraso', noshow: 'No pasó' };
+    const recent = serviceReports.slice(0, 8).map(r => '<div class="history-row"><b>' + rLabels[r.type] + '</b><small>' + r.line + ' · ' + LINES[r.li].stops[r.i].n + ' · hace ' + Math.max(0, mins((Date.now() - r.ts) / 60000)) + ' min</small></div>').join('') || '<p class="note">Sin reportes recientes.</p>';
+    el.innerHTML = '<div class="card report-card"><label>Parada<select id="repStop">' + stopOpts + '</select></label><label>Sentido<select id="repDir"><option value="0">Ida</option><option value="1">Vuelta</option></select></label>' +
+      '<div class="report-buttons"><button data-type="full">Camión lleno</button><button data-type="delay">Retraso</button><button data-type="noshow">No pasó</button></div><p id="repMsg" class="note"></p></div>' +
+      '<h4>Reportes recientes</h4><div id="communityReportList">' + recent + '</div>';
+    if (selStop !== null) document.getElementById('repStop').value = selStop;
+    el.querySelectorAll('[data-type]').forEach(b => b.onclick = async () => {
+      const type = b.dataset.type, i = +document.getElementById('repStop').value, d = +document.getElementById('repDir').value;
+      if (!confirm('¿Enviar reporte de ' + rLabels[type].toLowerCase() + ' en ' + ln.stops[i].n + '?')) return;
+      const msg = document.getElementById('repMsg');
+      msg.textContent = 'Enviando…';
+      const shared = await submitServiceReport({ type, li: lineIdx, i, d, ts: Date.now() });
+      if (viewIdx === 5) { renderView(); const m = document.getElementById('repMsg'); if (m) m.textContent = shared ? 'Reporte enviado.' : 'Sin conexión: no se pudo enviar.'; }
+    });
   }
 
   else {
-    const other = LINES[1 - lineIdx];
-    const rows = ln.stops.map((s, i) => '<tr><td>' + s.n + '</td><td>' + km(s.d) + '</td><td>' + mins(s.t) + '</td></tr>').join('');
+    const rows = ln.stops.map(s => '<tr><td>' + s.n + '</td><td>' + km(s.d) + '</td><td>' + mins(s.t) + '</td></tr>').join('');
     el.innerHTML = '<div class="settings"><button id="themeToggle">Cambiar tema</button><button id="fontToggle">Texto grande</button></div><div class="stats">' +
       '<div><b>' + ln.km.toFixed(1) + ' km</b><small>distancia de ida</small></div>' +
       '<div><b>' + mins(ln.T) + ' min</b><small>tiempo de ida</small></div>' +
-      '<div><b>' + (SPEED * 0.06).toFixed(1) + ' km/h</b><small>velocidad promedio</small></div>' +
-      '<div><b>' + mins(ln.headway) + ' min</b><small>entre camiones</small></div>' +
-      '<div><b>' + mins(ln.cycle) + ' min</b><small>vuelta completa</small></div>' +
-      '<div><b>' + mins(ln.dwell) + ' min</b><small>espera en base</small></div>' +
-      '<div><b>' + ln.nBuses + '</b><small>camiones (fijos)</small></div></div>' +
-      '<table class="tbl"><tr><th>Parada</th><th>km</th><th>min</th></tr>' + rows + '</table>' +
-      '<p class="note">' + (ln.real ? 'Tiempos medidos en un recorrido real.' : 'Tiempos estimados con la velocidad promedio real de L2.') + ' ' +
-      (ln.k === 1 ? 'Distancias por calles.' : 'Distancias estimadas (sin internet para trazar por calles).') +
-      ' L\u00ednea ' + other.short + ': ' + other.km.toFixed(1) + ' km, ' + mins(other.T) + ' min.</p>';
-    const themeBtn=document.getElementById('themeToggle');if(themeBtn)themeBtn.onclick=toggleTheme;const fontBtn=document.getElementById('fontToggle');if(fontBtn)fontBtn.onclick=toggleFont;
+      '<div><b>' + mins(ln.cycle) + ' min</b><small>vuelta completa</small></div></div>' +
+      '<table class="tbl"><tr><th>Parada</th><th>km</th><th>min</th></tr>' + rows + '</table>';
+    document.getElementById('themeToggle').onclick = toggleTheme;
+    document.getElementById('fontToggle').onclick = toggleFont;
   }
 }
 
@@ -399,7 +400,7 @@ function updateTrip() {
   const walk = originDistance < 400 ? Math.ceil(originDistance / 75) : 0;
   const firstWait = LA.id === LB.id ? Math.max(0, waits(LA, pl.toStop > pl.fromStop ? 0 : 1, pl.fromStop, state.buses)[0] || 0) : 5;
   const total = best.minutes + walk + firstWait;
-  el.innerHTML = '<div class="card"><div class="stats"><div><b>' + km(best.distance) + ' km</b><small>distancia aprox.</small></div><div><b>' + mins(best.minutes) + ' min</b><small>en ruta</small></div><div><b>' + mins(total) + ' min</b><small>total estimado</small></div></div><p><b>' + A.n + '</b> → <b>' + B.n + '</b></p><p class="note">' + best.path + '. ' + (LA.id === LB.id ? 'Espera estimada al camión: ' + mins(firstWait) + ' min. ' : 'Primer camión: ' + mins(firstWait) + ' min estimados. ') + (traffic > 1 ? 'Se añade margen de tráfico de 13:00 a 16:00. ' : '') + (walk ? 'Incluye ' + walk + ' min a pie hasta la parada de salida. ' : '') + '</p><small class="note">No es un horario oficial ni seguimiento en vivo.</small></div>';
+  el.innerHTML = '<div class="card"><div class="stats"><div><b>' + km(best.distance) + ' km</b><small>distancia</small></div><div><b>' + mins(best.minutes) + ' min</b><small>en ruta</small></div><div><b>' + mins(total) + ' min</b><small>total</small></div></div><p><b>' + A.n + '</b> → <b>' + B.n + '</b></p><p class="note">' + best.path + '. Espera: ' + mins(firstWait) + ' min.' + (traffic > 1 ? ' Incluye margen por tr\u00e1fico.' : '') + (walk ? ' Caminata: ' + walk + ' min.' : '') + '</p></div>';
 }
 
 // Capa fija: linea y paradas
@@ -443,10 +444,11 @@ function drawBuses(buses) {
 }
 
 function refresh() {
+  if (document.hidden) return;
   state.buses = fetchBuses();
   drawBuses(state.buses);
   renderFav(); renderNear(); renderNet();
-  if (viewIdx === 2) updateTrip(); else renderView();
+  if (viewIdx === 2) updateTrip(); else if (viewIdx !== 4 && viewIdx !== 5) renderView();
 }
 function drawAll() { renderTabs(); drawStatic(); state.buses = fetchBuses(); drawBuses(state.buses); renderFav(); renderView(); renderNet(); }
 function fitLine() {
@@ -678,17 +680,14 @@ function renderNet() {
   const el = document.getElementById('net');
   if (!el) return;
   const ln = LINES[lineIdx], r = reports[ln.id];
-  let html;
+  const dot = online.state === 'ok' ? '🟢' : online.state === 'connecting' ? '🟡' : '⚪';
+  const st = online.state === 'ok' ? 'En línea' : online.state === 'connecting' ? 'Conectando…' : 'Sin conexión';
+  let info = 'Sin reportes recientes';
   if (r) {
-    const age = Math.max(0, (Date.now() - r.ts) / 60000), s = ln.stops[r.i];
-    const who = r.uid === online.uid ? 'por ti' : (r.uid === 'local' ? 'en este tel\u00e9fono' : 'por otro usuario');
-    const when = age < 1 ? 'hace un momento' : 'hace ' + mins(age) + ' min';
-    html = (age <= STALE_MIN ? '<b>Confirmado ' + when + '</b>' : '<b>Estimado</b> \u00b7 \u00faltimo reporte ' + when) +
-      ' \u00b7 ' + ln.short + ' en ' + s.n + ' (' + who + ')';
-  } else html = 'Sin reportes recientes en ' + ln.short + '. Mostrando estimaci\u00f3n.';
-  const dot = online.state === 'ok' ? '\ud83d\udfe2' : online.state === 'connecting' ? '\ud83d\udfe1' : '\u26aa';
-  const st = online.state === 'ok' ? 'En l\u00ednea' : online.state === 'connecting' ? 'Conectando\u2026' : 'Sin conexi\u00f3n con otros usuarios' + (online.err ? ' (' + online.err + ')' : '');
-  el.innerHTML = '<div class="netbar ' + online.state + '"><span>' + dot + ' ' + st + '</span><small>' + html + '</small></div>';
+    const age = Math.max(0, (Date.now() - r.ts) / 60000);
+    info = (age <= STALE_MIN ? 'Confirmado ' : 'Último reporte ') + (age < 1 ? 'hace un momento' : 'hace ' + mins(age) + ' min') + ' · ' + ln.stops[r.i].n;
+  }
+  el.innerHTML = '<div class="netbar ' + online.state + '"><span>' + dot + ' ' + st + '</span><small>' + info + '</small></div>';
 }
 function renderNear() {
   const el = document.getElementById('near');
@@ -759,12 +758,24 @@ function init() {
   fitLine();
   LINES.forEach(loadRoute);
   const sheet = document.getElementById('sheet'), grab = document.getElementById('grab');
-  let sheetStart = null, dragged = false;
-  const sheetState = mode => { sheet.classList.toggle('collapsed', mode === 'small'); sheet.classList.toggle('expanded', mode === 'large'); };
-  grab.onclick = () => { if (dragged) { dragged = false; return; } const mode = sheet.classList.contains('collapsed') ? 'normal' : sheet.classList.contains('expanded') ? 'small' : 'large'; sheetState(mode); };
-  grab.addEventListener('pointerdown', e => { sheetStart = e.clientY; dragged = false; grab.setPointerCapture(e.pointerId); });
-  grab.addEventListener('pointerup', e => { if (sheetStart === null) return; const delta = e.clientY - sheetStart; if (Math.abs(delta) > 35) { dragged = true; sheetState(delta < 0 ? 'large' : 'small'); } sheetStart = null; });
-  grab.addEventListener('pointercancel', () => { sheetStart = null; });
+  const LEVELS = ['small', 'normal', 'large'];
+  const levelOf = () => sheet.classList.contains('collapsed') ? 0 : sheet.classList.contains('expanded') ? 2 : 1;
+  const setLevel = n => {
+    n = Math.max(0, Math.min(2, n));
+    sheet.classList.toggle('collapsed', n === 0);
+    sheet.classList.toggle('expanded', n === 2);
+    const v = document.getElementById('view'); if (v) v.scrollTop = 0;
+  };
+  let startY = null;
+  grab.addEventListener('pointerdown', e => { startY = e.clientY; try { grab.setPointerCapture(e.pointerId); } catch (x) {} });
+  grab.addEventListener('pointerup', e => {
+    if (startY === null) return;
+    const dy = e.clientY - startY; startY = null;
+    if (Math.abs(dy) > 12) setLevel(levelOf() + (dy < 0 ? 1 : -1));
+    else setLevel(levelOf() === 0 ? 1 : 0);
+  });
+  grab.addEventListener('pointercancel', () => { startY = null; });
+  grab.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setLevel(levelOf() === 0 ? 1 : 0); } });
   let taps = 0, tt;
   document.getElementById('status').onclick = () => {
     if (editMode) return setEditMode(false);
@@ -783,6 +794,7 @@ function init() {
   if (g === 'granted') startGeo(); else if (g === null) askPerm();
   setInterval(tickCd, 1000);
   setInterval(refresh, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   initOnline();
   window.addEventListener('online', () => { if (online.state !== 'ok') initOnline(); });
 }
