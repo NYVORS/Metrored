@@ -48,6 +48,7 @@ const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v
 // Ultimo reporte "ya llego" de cada linea: { li, i, d, left, ts(ms), uid }. Viene de este telefono o de otros usuarios.
 // De el se calcula el ajuste de reloj de la linea (ver syncOf).
 let reports = {};
+let serviceReports = [];
 
 // ---------- Configuracion de Firebase (la llave web no es secreta: la protegen las reglas de Firestore) ----------
 const FIREBASE_CONFIG = {
@@ -243,6 +244,10 @@ function renderFav() {
 }
 
 // ---------- UI ----------
+const THEME_KEY='mr_theme_v1', FONT_KEY='mr_font_v1';
+function applyPrefs(){document.body.classList.toggle('dark',localStorage.getItem(THEME_KEY)==='dark');document.body.classList.toggle('large-text',localStorage.getItem(FONT_KEY)==='large');}
+function toggleTheme(){localStorage.setItem(THEME_KEY,localStorage.getItem(THEME_KEY)==='dark'?'light':'dark');applyPrefs();}
+function toggleFont(){localStorage.setItem(FONT_KEY,localStorage.getItem(FONT_KEY)==='large'?'normal':'large');applyPrefs();}
 function renderTabs() {
   const el = document.getElementById('lines');
   el.innerHTML = '';
@@ -251,12 +256,12 @@ function renderTabs() {
     b.className = 'tab' + (i === lineIdx ? ' active' : '');
     b.innerHTML = '<span class="badge" style="background:' + ln.color + '">' + ln.short + '</span>' + ln.name;
     if (i === lineIdx) b.style.borderColor = ln.color;
-    b.onclick = () => { lineIdx = i; selStop = null; schedStop = 0; trip = { a: 0, b: LINES[i].stops.length - 1 }; clearBuses(); drawAll(); fitLine(); };
+    b.onclick = () => { lineIdx = i; selStop = null; schedStop = 0; trip = { a: 0, b: LINES[i].stops.length - 1, plan: { fromLine:i, fromStop:0, toLine:i, toStop:LINES[i].stops.length-1 } }; clearBuses(); drawAll(); fitLine(); };
     el.appendChild(b);
   });
   const vEl = document.getElementById('views');
   vEl.innerHTML = '';
-  ['Paradas', 'Recorrido', 'Viaje', 'Horarios', 'Info'].forEach((v, i) => {
+  ['Paradas', 'Recorrido', 'Viaje', 'Horarios', 'Info', 'Reportes'].forEach((v, i) => {
     const b = document.createElement('button');
     b.className = 'vbtn' + (i === viewIdx ? ' active' : '');
     b.textContent = v;
@@ -313,14 +318,18 @@ function renderView() {
   }
 
   else if (viewIdx === 2) {
-    const opts = sel => ln.stops.map((s, i) => '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + s.n + '</option>').join('');
-    if (trip.b >= ln.stops.length || trip.a >= ln.stops.length) trip = { a: 0, b: ln.stops.length - 1 };
-    el.innerHTML = '<div class="trip"><label>Salgo de<select id="selA">' + opts(trip.a) + '</select></label>' +
-      '<button id="swap" class="swap" aria-label="Invertir">\u21c5</button>' +
-      '<label>Voy a<select id="selB">' + opts(trip.b) + '</select></label></div><div id="tripRes"></div>';
-    document.getElementById('selA').onchange = e => { trip.a = +e.target.value; updateTrip(); };
-    document.getElementById('selB').onchange = e => { trip.b = +e.target.value; updateTrip(); };
-    document.getElementById('swap').onclick = () => { [trip.a, trip.b] = [trip.b, trip.a]; renderView(); };
+    if (!trip.plan) trip.plan = { fromLine: lineIdx, fromStop: 0, toLine: lineIdx, toStop: LINES[lineIdx].stops.length - 1 };
+    const pl = trip.plan;
+    const lineOptions = LINES.map((x,k) => '<option value=\"'+k+'\">'+x.short+' · '+x.name+'</option>').join('');
+    const stopOptions = (li, sel) => LINES[li].stops.map((x,k) => '<option value=\"'+k+'\"'+(k===sel?' selected':'')+'>'+x.n+'</option>').join('');
+    el.innerHTML = '<div class=\"trip\"><label>Linea de salida<select id=\"planFL\">'+lineOptions+'</select></label><label>Parada de salida<select id=\"planFS\">'+stopOptions(pl.fromLine,pl.fromStop)+'</select></label></div>'+
+      '<div class=\"trip\"><label>Linea de destino<select id=\"planTL\">'+lineOptions+'</select></label><label>Parada de destino<select id=\"planTS\">'+stopOptions(pl.toLine,pl.toStop)+'</select></label></div><div id=\"tripRes\"></div>';
+    document.getElementById('planFL').value = pl.fromLine; document.getElementById('planTL').value = pl.toLine;
+    const rebuild = (side) => { const li=side==='f'?pl.fromLine:pl.toLine, id=side==='f'?'planFS':'planTS'; document.getElementById(id).innerHTML=stopOptions(li,0); if(side==='f') pl.fromStop=0; else pl.toStop=0; updateTrip(); };
+    document.getElementById('planFL').onchange=e=>{pl.fromLine=+e.target.value;rebuild('f');};
+    document.getElementById('planTL').onchange=e=>{pl.toLine=+e.target.value;rebuild('t');};
+    document.getElementById('planFS').onchange=e=>{pl.fromStop=+e.target.value;updateTrip();};
+    document.getElementById('planTS').onchange=e=>{pl.toStop=+e.target.value;updateTrip();};
     updateTrip();
   }
 
@@ -340,10 +349,19 @@ function renderView() {
     document.getElementById('selS').onchange = e => { schedStop = +e.target.value; selStop = schedStop; renderView(); drawStatic(); };
   }
 
+  else if (viewIdx === 5) {
+    const stopOpts=ln.stops.map((s,i)=>'<option value=\"'+i+'\">'+s.n+'</option>').join('');
+    el.innerHTML='<div class=\"card report-card\"><h3>Reportar servicio</h3><p class=\"note\">Reportes comunitarios; no son datos oficiales ni verifican GPS.</p><label>Parada<select id=\"repStop\">'+stopOpts+'</select></label><label>Sentido<select id=\"repDir\"><option value=\"0\">Ida</option><option value=\"1\">Vuelta</option></select></label><div class=\"report-buttons\"><button data-type=\"full\">Camión lleno</button><button data-type=\"delay\">Retraso</button><button data-type=\"noshow\">No pasó</button></div><p id=\"repMsg\" class=\"note\"></p><h4>Reportes recientes en este teléfono</h4><div id=\"repHistory\"></div><h4>Reportes de la comunidad</h4><div id=\"communityReportList\"></div></div>';
+    let history=[];try{history=JSON.parse(localStorage.getItem('mr_service_reports_v1')||'[]').slice(-5).reverse();}catch(e){}
+    const rLabels={full:'Camión lleno',delay:'Retraso',noshow:'No pasó'};const rh=document.getElementById('repHistory');if(rh)rh.innerHTML=history.map(r=>'<div class=\"history-row\"><b>'+rLabels[r.type]+'</b><small>'+LINES[r.li].short+' · '+LINES[r.li].stops[r.i].n+' · '+new Date(r.ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'</small></div>').join('')||'<p class=\"note\">Aún no hay reportes.</p>';
+    const cr=document.getElementById('communityReportList');if(cr)cr.innerHTML=serviceReports.slice(0,10).map(r=>'<div class=\"history-row\"><b>'+rLabels[r.type]+'</b><small>'+r.line+' · '+LINES[r.li].stops[r.i].n+' · hace '+Math.max(0,mins((Date.now()-r.ts)/60000))+' min</small></div>').join('')||'<p class=\"note\">No hay reportes comunitarios recientes.</p>';
+    el.querySelectorAll('[data-type]').forEach(b=>b.onclick=async()=>{const type=b.dataset.type,i=+document.getElementById('repStop').value,d=+document.getElementById('repDir').value;const labels={full:'camión lleno',delay:'retraso',noshow:'no pasó'};if(!confirm('¿Enviar reporte de '+labels[type]+' en '+ln.stops[i].n+'?'))return;const msg=document.getElementById('repMsg');msg.textContent='Guardado en este teléfono…';const shared=await submitServiceReport({type,li:lineIdx,i,d,ts:Date.now()});msg.textContent=shared?'Reporte compartido con otros usuarios.':'Reporte guardado solo en este teléfono; no se compartió.';renderView();});
+  }
+
   else {
     const other = LINES[1 - lineIdx];
     const rows = ln.stops.map((s, i) => '<tr><td>' + s.n + '</td><td>' + km(s.d) + '</td><td>' + mins(s.t) + '</td></tr>').join('');
-    el.innerHTML = '<div class="stats">' +
+    el.innerHTML = '<div class="settings"><button id="themeToggle">Cambiar tema</button><button id="fontToggle">Texto grande</button></div><div class="stats">' +
       '<div><b>' + ln.km.toFixed(1) + ' km</b><small>distancia de ida</small></div>' +
       '<div><b>' + mins(ln.T) + ' min</b><small>tiempo de ida</small></div>' +
       '<div><b>' + (SPEED * 0.06).toFixed(1) + ' km/h</b><small>velocidad promedio</small></div>' +
@@ -355,23 +373,33 @@ function renderView() {
       '<p class="note">' + (ln.real ? 'Tiempos medidos en un recorrido real.' : 'Tiempos estimados con la velocidad promedio real de L2.') + ' ' +
       (ln.k === 1 ? 'Distancias por calles.' : 'Distancias estimadas (sin internet para trazar por calles).') +
       ' L\u00ednea ' + other.short + ': ' + other.km.toFixed(1) + ' km, ' + mins(other.T) + ' min.</p>';
+    const themeBtn=document.getElementById('themeToggle');if(themeBtn)themeBtn.onclick=toggleTheme;const fontBtn=document.getElementById('fontToggle');if(fontBtn)fontBtn.onclick=toggleFont;
   }
 }
 
 function updateTrip() {
-  const ln = LINES[lineIdx], el = document.getElementById('tripRes');
-  if (!el) return;
-  if (trip.a === trip.b) { el.innerHTML = '<p class="note">Elige dos paradas distintas.</p>'; return; }
-  const d = trip.b > trip.a ? 0 : 1;
-  const A = ln.stops[trip.a], B = ln.stops[trip.b];
-  const distM = Math.abs(B.d - A.d), ride = Math.abs(B.t - A.t);
-  const w = waits(ln, d, trip.a, state.buses)[0] || 0;
-  const dest = d === 0 ? ln.stops[ln.stops.length - 1].n : ln.stops[0].n;
-  el.innerHTML = '<div class="card"><div class="stats">' +
-    '<div><b>' + km(distM) + ' km</b><small>distancia</small></div>' +
-    '<div><b>' + mins(ride) + ' min</b><small>en cami\u00f3n</small></div>' +
-    '<div><b>' + (w <= 1 ? 'Ya' : mins(w) + ' min') + '</b><small>pr\u00f3ximo cami\u00f3n</small></div></div>' +
-    '<p class="note">Direcci\u00f3n ' + dest + '. Llegar\u00edas a ' + B.n + ' hacia las <b>' + inMin(w + ride) + '</b> (' + mins(w + ride) + ' min en total).</p></div>';
+  const el = document.getElementById('tripRes'); if (!el) return;
+  const pl = trip.plan || { fromLine: lineIdx, fromStop: 0, toLine: lineIdx, toStop: LINES[lineIdx].stops.length - 1 };
+  const LA = LINES[pl.fromLine], LB = LINES[pl.toLine], A = LA.stops[pl.fromStop], B = LB.stops[pl.toStop];
+  if (!A || !B || (LA.id === LB.id && pl.fromStop === pl.toStop)) { el.innerHTML = '<p class="note">Selecciona dos paradas diferentes.</p>'; return; }
+  const traffic = (() => { const h = new Date().getHours(); return h >= 13 && h < 16 ? 1.15 : 1; })();
+  const leg = (ln, i, j) => Math.abs(ln.stops[j].t - ln.stops[i].t) * traffic;
+  let best = null;
+  if (LA.id === LB.id) best = { minutes: leg(LA, pl.fromStop, pl.toStop), distance: Math.abs(B.d - A.d), path: 'Viaje directo' };
+  else {
+    const shared = LA.stops.filter(x => x.tr && LB.stops.some(y => y.tr && y.n === x.n));
+    shared.forEach(st => {
+      const ai = LA.stops.findIndex(x => x.n === st.n), bi = LB.stops.findIndex(x => x.n === st.n);
+      const candidate = { minutes: leg(LA, pl.fromStop, ai) + 9 + leg(LB, bi, pl.toStop), distance: Math.abs(st.d - A.d) + Math.abs(B.d - LB.stops[bi].d), path: 'Transbordo en ' + st.n + ' (5 min de espera + 4 min caminando)' };
+      if (!best || candidate.minutes < best.minutes) best = candidate;
+    });
+  }
+  if (!best) { el.innerHTML = '<p class="note">No se encontró transbordo entre estas líneas.</p>'; return; }
+  const originDistance = loc.pos ? dist(loc.pos, [A.lat, A.lng]) : Infinity;
+  const walk = originDistance < 400 ? Math.ceil(originDistance / 75) : 0;
+  const firstWait = LA.id === LB.id ? Math.max(0, waits(LA, pl.toStop > pl.fromStop ? 0 : 1, pl.fromStop, state.buses)[0] || 0) : 5;
+  const total = best.minutes + walk + firstWait;
+  el.innerHTML = '<div class="card"><div class="stats"><div><b>' + km(best.distance) + ' km</b><small>distancia aprox.</small></div><div><b>' + mins(best.minutes) + ' min</b><small>en ruta</small></div><div><b>' + mins(total) + ' min</b><small>total estimado</small></div></div><p><b>' + A.n + '</b> → <b>' + B.n + '</b></p><p class="note">' + best.path + '. ' + (LA.id === LB.id ? 'Espera estimada al camión: ' + mins(firstWait) + ' min. ' : 'Primer camión: ' + mins(firstWait) + ' min estimados. ') + (traffic > 1 ? 'Se añade margen de tráfico de 13:00 a 16:00. ' : '') + (walk ? 'Incluye ' + walk + ' min a pie hasta la parada de salida. ' : '') + '</p><small class="note">No es un horario oficial ni seguimiento en vivo.</small></div>';
 }
 
 // Capa fija: linea y paradas
@@ -614,14 +642,16 @@ function listenReports() {
   online.unsub = online.db.collection('reportes').where('ts', '>', cutoff).orderBy('ts', 'desc').limit(40).onSnapshot(snap => {
     if (!snap.metadata.fromCache) { online.state = 'ok'; online.err = null; }
     let changed = false;
+    serviceReports = [];
     snap.forEach(doc => {
       const x = doc.data({ serverTimestamps: 'estimate' });
-      if (!x || !x.ts || !x.ts.toMillis) return;
+      if (!x || (x.tipo && !['arrival','full','delay','noshow'].includes(x.tipo)) || !x.ts || !x.ts.toMillis) return;
       const li = LINES.findIndex(l => l.id === x.linea), ts = x.ts.toMillis();
       if (li < 0 || ts > Date.now() + 300000) return;
+      if (x.tipo && ['full','delay','noshow'].includes(x.tipo)) { if (x.parada >= 0 && x.parada < LINES[li].stops.length) serviceReports.push({type:x.tipo,li,line:LINES[li].short,i:x.parada,d:x.sentido,ts,uid:x.uid||'?'}); return; }
       if (consider({ li, i: x.parada, d: x.sentido, left: x.left || 0, ts, uid: x.uid || '?' })) changed = true;
     });
-    if (changed) refresh(); else renderNet();
+    if (changed) refresh(); else { renderNet(); if (viewIdx === 5) renderView(); }
   }, err => {
     online.state = 'error'; online.err = err.code || 'error';
     if (online.unsub) { online.unsub(); online.unsub = null; }
@@ -634,11 +664,16 @@ function publishReport(r) {
   if (online.last[key] && r.ts - online.last[key] < 20000) return;   // evita doble toque
   online.last[key] = r.ts;
   online.db.collection('reportes').add({
-    linea: LINES[r.li].id, sentido: r.d, parada: r.i, left: r.left,
-    ts: firebase.firestore.FieldValue.serverTimestamp(), uid: online.uid,
+    tipo: 'arrival', linea: LINES[r.li].id, sentido: r.d, parada: r.i, left: r.left,
+    ts: firebase.firestore.FieldValue.serverTimestamp(), expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 3 * 3600000), uid: online.uid,
   }).catch(e => { online.state = 'error'; online.err = (e && e.code) || 'error'; renderNet(); retryOnline(); });
 }
 // Linea de estado bajo el mapa: dice si hay conexion y que tan reciente es el ultimo reporte de la linea que se ve.
+function submitServiceReport(r) {
+  try { const arr=JSON.parse(localStorage.getItem('mr_service_reports_v1')||'[]');arr.push({...r});localStorage.setItem('mr_service_reports_v1',JSON.stringify(arr.slice(-50))); } catch(e) {}
+  if(!online.db||!online.uid)return Promise.resolve(false);
+  return online.db.collection('reportes').add({tipo:r.type,linea:LINES[r.li].id,sentido:r.d,parada:r.i,left:0,ts:firebase.firestore.FieldValue.serverTimestamp(),expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now()+3*3600000),uid:online.uid}).then(()=>true).catch(e=>{online.err=e.code||'error';renderNet();retryOnline();return false;});
+}
 function renderNet() {
   const el = document.getElementById('net');
   if (!el) return;
@@ -714,6 +749,7 @@ function tickCd() {
 
 function init() {
   loadOverrides();
+  applyPrefs();
   loadFav(); loadReports();
   LINES.forEach(l => setGeom(l, straightGeom(l), false));
   trip = { a: 0, b: LINES[0].stops.length - 1 };
@@ -722,7 +758,13 @@ function init() {
   drawAll();
   fitLine();
   LINES.forEach(loadRoute);
-  document.getElementById('grab').onclick = () => document.getElementById('sheet').classList.toggle('collapsed');
+  const sheet = document.getElementById('sheet'), grab = document.getElementById('grab');
+  let sheetStart = null, dragged = false;
+  const sheetState = mode => { sheet.classList.toggle('collapsed', mode === 'small'); sheet.classList.toggle('expanded', mode === 'large'); };
+  grab.onclick = () => { if (dragged) { dragged = false; return; } const mode = sheet.classList.contains('collapsed') ? 'normal' : sheet.classList.contains('expanded') ? 'small' : 'large'; sheetState(mode); };
+  grab.addEventListener('pointerdown', e => { sheetStart = e.clientY; dragged = false; grab.setPointerCapture(e.pointerId); });
+  grab.addEventListener('pointerup', e => { if (sheetStart === null) return; const delta = e.clientY - sheetStart; if (Math.abs(delta) > 35) { dragged = true; sheetState(delta < 0 ? 'large' : 'small'); } sheetStart = null; });
+  grab.addEventListener('pointercancel', () => { sheetStart = null; });
   let taps = 0, tt;
   document.getElementById('status').onclick = () => {
     if (editMode) return setEditMode(false);

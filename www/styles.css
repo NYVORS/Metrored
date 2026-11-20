@@ -167,3 +167,32 @@ select { width:100%; margin-top:3px; padding:9px 6px; border-radius:10px; border
 .netbar small { font-size:12px; color:#3d5a4a; }
 .netbar.error { background:#f1f3f5; color:#46515b; }
 .netbar.error small { color:#6a7885; }
+
+/* MetroRed update: preferences, accessibility and report UI */
+.sheet.expanded { max-height: 84vh; }
+.grab { touch-action: pan-x; cursor: grab; }
+.settings { display:flex; gap:8px; margin:8px 0; }
+.settings button, .report-buttons button { flex:1; border:1px solid var(--line); background:var(--card, #fff); color:var(--ink); border-radius:10px; padding:10px 8px; font-weight:700; font-size:12px; }
+.report-buttons { display:flex; gap:6px; margin-top:10px; }
+.report-buttons button { background:#e8f7ed; color:#064d2e; border:0; }
+.report-card label { margin:8px 0; }
+.history-row { display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-top:1px solid var(--line); gap:8px; }
+.history-row small { color:var(--muted); text-align:right; }
+body.large-text { font-size:18px; }
+body.large-text .stop .name { font-size:18px; }
+body.large-text .stop .sub, body.large-text .note, body.large-text .vbtn { font-size:14px; }
+body.dark { --bg:#101a16; --ink:#e8f1ec; --muted:#9fb0a8; --line:#293831; --card:#1c2a23; color:var(--ink); }
+body.dark .sheet, body.dark .card, body.dark .bcard, body.dark .stats div { background:#1c2a23; color:var(--ink); }
+body.dark .tab, body.dark select, body.dark .dir, body.dark .vbtn, body.dark .settings button { background:#202e27; color:var(--ink); border-color:#35463d; }
+body.dark .tab.active { background:#e8f7ed; color:#064d2e; }
+body.dark .dir.active, body.dark .vbtn.active { background:#0e8a4a; color:white; }
+body.dark .stop.selected { background:#1d392b; }
+body.dark .dot { background:#1c2a23; }
+body.dark .card .stats div { background:#101a16; }
+body.dark .tbl td { border-color:var(--line); }
+body.dark .near { color:#fff; }
+body.dark .near.warn { color:#7a4a00; }
+body.dark .report-buttons button { background:#244532; color:#e8f1ec; }
+body.dark #map .leaflet-tile { filter: invert(0.88) hue-rotate(180deg) brightness(0.86) contrast(0.9); }
+.views { overflow-x:auto; scrollbar-width:thin; }utton.vbtn { min-width:72px; flex:0 0 auto; }
+.grab { touch-action:none; }

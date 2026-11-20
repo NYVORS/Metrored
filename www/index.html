@@ -5,8 +5,9 @@
   <meta name="google" content="notranslate">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#064d2e">
-  <title>Redmetro Rioverde en vivo</title>
+  <title>MetroRed Rioverde</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="manifest" href="metrored.webmanifest">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,7 +17,7 @@
     <div class="brand">
       <img class="logo-img" src="icon.png" alt="MetroRed SLP GPS">
       <div>
-        <strong>Redmetro Rioverde en vivo</strong>
+        <strong>MetroRed Rioverde</strong>
         <small>Zona Media &#xB7; Gratuito &#xB7; Sin l&#xED;mites</small>
       </div>
     </div>
@@ -57,5 +58,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
+  <script>if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));</script>
 </body>
 </html>

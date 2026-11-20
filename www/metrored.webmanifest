@@ -1,0 +1,18 @@
+{
+  "name": "MetroRed Rioverde",
+  "short_name": "MetroRed",
+  "description": "Estimaciones comunitarias de rutas y paradas MetroRed en Zona Media.",
+  "lang": "es-MX",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#064d2e",
+  "background_color": "#f6fcf8",
+  "icons": [{
+    "src": "icon.png",
+    "sizes": "192x192",
+    "type": "image/png",
+    "purpose": "any maskable"
+  }]
+}
