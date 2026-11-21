@@ -1,3 +1,4 @@
+
 // ============================================================
 // Redmetro Rioverde en vivo - prototipo con DATOS SIMULADOS
 // - Paradas segun el mapa publico de la SCT (Zona Media), posiciones verificadas.
@@ -52,7 +53,7 @@ let SPEED = 300;           // m/min (se recalcula con la calibracion)
 
 const STORE_KEY = 'mr_stops_v4', ROUTE_KEY = 'mr_route_v4_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
 // Ultimo reporte "ya llego" de cada linea: { li, i, d, left, ts(ms), uid }. Viene de este telefono o de otros usuarios.
-// De el se calcula el ajuste de reloj de la linea (ver syncOf).
+// De el se calcula el ajuste de reloj de la linea (ver busOffsets).
 let reports = {};
 let serviceReports = [];
 let arrivalObservations = []; // observaciones comunitarias de llegada (UTC ms); no alteran la simulacion hasta validar la correspondencia de paradas
@@ -233,9 +234,9 @@ function positionAtReverse(ln, minutes) {
 function fetchBuses() {
   const out = [];
   LINES.forEach(ln => {
-    const now = Date.now() / 60000 + syncOf(ln);
+    const now = Date.now() / 60000, off = busOffsets(ln);
     for (let k = 0; k < ln.nBuses; k++) {
-      const phase = (((now - k * ln.headway) % ln.cycle) + ln.cycle) % ln.cycle;
+      const phase = (((now + (off[k] || 0) - k * ln.headway) % ln.cycle) + ln.cycle) % ln.cycle;
       out.push(busFromPhase(ln, k, phase));
     }
   });
@@ -635,35 +636,70 @@ function offsetFromReport(ln, r) {
   const base = (r.i === 0 && r.d === 0) || (r.i === last && r.d === 1);
   if (base) {
     const target = r.d === 0 ? ln.T0 + ln.dwell - r.left : c - r.left;   // fase en que el camion espera en la base con "left" min por salir
-    return phases.map(p => { let x = (target - p) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return x; })
-      .reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+    return phases.map((p, k) => { let x = (target - p) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return { k, x }; })
+      .reduce((m, o) => Math.abs(o.x) < Math.abs(m.x) ? o : m);
   }
   const buses = phases.map((p, k) => busFromPhase(ln, k, p));
-  return arrivals(ln, r.d, r.i, buses).map(a => a.w > c / 2 ? a.w - c : a.w)
-    .reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
+  return arrivals(ln, r.d, r.i, buses).map(a => ({ k: parseInt(a.bus.id.split('-').pop(), 10) - 1, x: a.w > c / 2 ? a.w - c : a.w }))
+    .reduce((m, o) => Math.abs(o.x) < Math.abs(m.x) ? o : m);
 }
-// Ajuste de reloj de la linea (min). Se recalcula solo cuando cambia el reporte o los tiempos de la linea.
-function syncOf(ln) {
+// ---------- Reportes "ya llego": ajuste por camion + registro ----------
+// Un reporte SOLO corrige al camion al que corresponde (el que segun el horario esta mas cerca de ese evento), nunca a toda la linea.
+// - Si la diferencia con el horario es mayor a MAX_ADJ_MIN, el reporte se guarda en el registro pero NO mueve nada (puede ser falso o de otro camion).
+// - La correccion se va diluyendo sola y el camion vuelve a su horario en FADE_MIN minutos.
+const MAX_ADJ_MIN = 8, FADE_MIN = 30, LOG_KEY = 'mr_reglog_v1';
+let regLog = [];
+try { regLog = JSON.parse(localStorage.getItem(LOG_KEY) || '[]') || []; } catch (e) { regLog = []; }
+const saveLog = () => { try { localStorage.setItem(LOG_KEY, JSON.stringify(regLog.slice(-200))); } catch (e) {} };
+const logKey = r => [r.ts, r.uid, r.li, r.i, r.d].join('|');
+// Registro de eventos: hora, linea, parada, sentido, llegada/salida. Se guarda en el telefono (ultimos 200).
+function logReport(r) {
+  if (regLog.some(e => e.key === logKey(r))) return;
+  const ln = LINES[r.li], last = ln.stops.length - 1;
+  const base = (r.i === 0 && r.d === 0) || (r.i === last && r.d === 1);
+  regLog.push({ key: logKey(r), ts: r.ts, linea: ln.short || ln.id, parada: ln.stops[r.i].n, sentido: r.d === 0 ? 'ida' : 'regreso',
+    tipo: base ? (r.left > 0 ? 'llegada a base (sale en ' + r.left + ' min)' : 'salida') : 'llegada', aplicado: null, ajusteMin: null, motivo: '' });
+  regLog = regLog.slice(-200); saveLog();
+}
+function markLog(r, applied, x, why) {
+  const e = regLog.find(v => v.key === logKey(r));
+  if (!e) return;
+  e.aplicado = applied; e.ajusteMin = Math.round(x * 10) / 10; e.motivo = why || ''; saveLog();
+}
+// Correccion (min) de cada camion de la linea. El resto de la simulacion sigue el horario observado.
+function busOffsets(ln) {
+  const n = ln.nBuses, now = Date.now();
+  if (!ln._bo) ln._bo = [];
   const r = reports[ln.id];
-  if (!r || !ln.cycle) return 0;
-  const key = [r.ts, r.i, r.d, r.left, ln.cycle, ln.T0, ln.T1].join('|');
-  if (ln._sk !== key) { ln._sk = key; ln._sv = offsetFromReport(ln, r); }
-  // Cuando llega un reporte nuevo (de otro usuario) el ajuste se aplica de forma gradual (hasta 15 s de horario por segundo)
-  // para que los camiones se deslicen en vez de "teletransportarse". El toque propio ("Ya llego") se aplica de inmediato (_snap).
-  const now = Date.now();
-  if (ln._shown === undefined || ln._snap || !(now - ln._st < 30000)) ln._shown = ln._sv;
-  else {
-    const diff = ln._sv - ln._shown, step = 0.25 * Math.max(0, (now - ln._st) / 1000);
-    ln._shown += Math.abs(diff) <= step ? diff : Math.sign(diff) * step;
+  if (r && ln.cycle) {
+    const key = [r.ts, r.i, r.d, r.left, ln.cycle, ln.T0, ln.T1, n].join('|');
+    if (ln._sk !== key) {
+      ln._sk = key;
+      const m = offsetFromReport(ln, r);
+      if (m && isFinite(m.x) && m.k >= 0 && m.k < n && Math.abs(m.x) <= MAX_ADJ_MIN) { ln._bo[m.k] = { off: m.x, ts: r.ts }; markLog(r, true, m.x, 'camion ' + (m.k + 1)); }
+      else if (m) markLog(r, false, m.x, 'difiere ' + Math.round(Math.abs(m.x)) + ' min del horario (max ' + MAX_ADJ_MIN + ')');
+    }
+  }
+  // Las correcciones se aplican de forma gradual (hasta 15 s de horario por segundo) para que el camion se deslice y no "salte".
+  // El toque propio ("Ya llego") se aplica de inmediato (_snap).
+  if (!ln._sb) ln._sb = [];
+  const dt = ln._st ? Math.max(0, (now - ln._st) / 1000) : 0, step = 0.25 * dt, out = [];
+  for (let k = 0; k < n; k++) {
+    const bo = ln._bo[k], tgt = bo ? bo.off * Math.max(0, 1 - (now - bo.ts) / (FADE_MIN * 60000)) : 0;
+    let cur = ln._sb[k];
+    if (cur === undefined || ln._snap || dt > 30) cur = tgt;
+    else { const diff = tgt - cur; cur += Math.abs(diff) <= step ? diff : Math.sign(diff) * step; }
+    ln._sb[k] = cur; out.push(cur);
   }
   ln._st = now; ln._snap = false;
-  return ln._shown;
+  return out;
 }
 function saveReports() { try { localStorage.setItem(REP_KEY, JSON.stringify(reports)); } catch (e) {} }
 // Se queda con el reporte mas nuevo de cada linea.
 function consider(r) {
   const ln = LINES[r.li];
   if (!ln || !(r.i >= 0 && r.i < ln.stops.length) || (r.d !== 0 && r.d !== 1) || !(r.left >= 0 && r.left <= 30)) return false;
+  logReport(r);
   const cur = reports[ln.id];
   if (cur && r.ts <= cur.ts) return false;
   reports[ln.id] = r; saveReports();
