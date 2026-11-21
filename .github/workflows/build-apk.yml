@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write   # necesario para publicar el release con el APK
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,6 +23,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Leer version de la app (APP_VERSION en app.js)
+        run: |
+          V=$(grep -rhoE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" --include=app.js --exclude-dir=node_modules --exclude-dir=android --exclude-dir=.git . | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
+          if [ -z "$V" ]; then echo "No se encontro APP_VERSION en app.js"; exit 1; fi
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
+          echo "Version: $V"
+
       - name: Instalar dependencias
         run: npm install
 
@@ -27,6 +37,12 @@ jobs:
         run: |
           if [ ! -d android ]; then npx cap add android; fi
           npx cap sync android
+
+      - name: Version del APK (para que Android acepte la actualizacion)
+        run: |
+          G=android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/; s/versionName \".*\"/versionName \"$APP_VERSION\"/" "$G"
+          grep -E "versionCode|versionName" "$G"
 
       - name: Permisos de ubicacion (Android)
         run: |
@@ -41,6 +57,16 @@ jobs:
           unzip -o icons.zip -d "$R"
           ls "$R"/mipmap-xxxhdpi "$R"/mipmap-anydpi-v26
 
+      - name: Llave de firma fija (para poder actualizar sin desinstalar)
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "Falta el secret DEBUG_KEYSTORE_BASE64 (Settings > Secrets and variables > Actions)"; exit 1
+          fi
+          mkdir -p ~/.android
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+
       - name: Compilar APK debug
         working-directory: android
         run: ./gradlew assembleDebug
@@ -50,3 +76,15 @@ jobs:
         with:
           name: metrored-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publicar release (para el aviso de actualizacion dentro de la app)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="MetroRed-$APP_VERSION.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$APK"
+          if gh release view "v$APP_VERSION" >/dev/null 2>&1; then
+            gh release upload "v$APP_VERSION" "$APK" --clobber
+          else
+            gh release create "v$APP_VERSION" "$APK" --title "MetroRed $APP_VERSION" --notes "Actualizacion MetroRed $APP_VERSION" --latest
+          fi
