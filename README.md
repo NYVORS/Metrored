@@ -30,12 +30,10 @@ Ya sea que vayas a clases, al trabajo, de compras o a visitar a alguien entre **
 > *Tip: Cuando tengas tus capturas de pantalla, súbelas a una carpeta `assets/` en tu repositorio y reemplaza los enlaces de abajo para que se vean aquí.*
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/TU_USUARIO/TU_REPO/main/assets/captura-mapa.png" alt="Mapa de Metro Red" width="280" />
+  <img src="assets/captura-mapa.png" alt="Mapa de Metro Red" width="280" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://raw.githubusercontent.com/TU_USUARIO/TU_REPO/main/assets/captura-paradas.png" alt="Paradas y tiempos de llegada" width="280" />
+  <img src="assets/captura-paradas.png" alt="Paradas y tiempos de llegada" width="280" />
 </div>
-
-
 
 
 ---
