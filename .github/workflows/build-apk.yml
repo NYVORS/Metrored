@@ -80,6 +80,17 @@ jobs:
           name: metrored-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Diagnostico del APK (version y firma)
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          {
+            echo "Paquete y version:"
+            "$BT/aapt" dump badging "$APK" | grep -E "^package:" | sed -E "s/ platformBuild.*//"
+            echo "Firma (SHA-256 del certificado):"
+            "$BT/apksigner" verify --print-certs "$APK" | grep -E "certificate SHA-256" | head -1
+          } | tee diag.txt
+
       - name: Publicar release (para el aviso de actualizacion dentro de la app)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,5 +100,5 @@ jobs:
           if gh release view "v$APP_VERSION" >/dev/null 2>&1; then
             gh release upload "v$APP_VERSION" "$APK" --clobber
           else
-            gh release create "v$APP_VERSION" "$APK" --title "MetroRed $APP_VERSION" --notes "Actualizacion MetroRed $APP_VERSION" --latest
+            gh release create "v$APP_VERSION" "$APK" --title "MetroRed $APP_VERSION" --notes-file diag.txt --latest
           fi
