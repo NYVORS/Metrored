@@ -42,6 +42,8 @@ const ROAD_FACTOR = 1.04;  // si la linea es recta, se estima la distancia por c
 // Minutos reales desde la salida (por parada, en el orden de LINES). Medido con cronometro + Strava.
 // L2: Llanitos 7:40 -> Tecnologico 8:12 = 32 min. Centenario es interpolado (no se midio). Morelos = zona de transferencia (7:57).
 const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 17, 19, 21, 23, 26, 28, 30, 31, 32] };
+// Tiempos manuales recientes, independientes por sentido. rt: minutos desde Tecnologico hacia Llanitos.
+const REAL_T_REV = { L2: [43, 38, 34, 30, 28, 24, 22, 18, 16, 14, 9, 6, 5, 3, 0] }; // Correos se aproxima a Matamoros en el listado de paradas
 let SPEED = 300;           // m/min (se recalcula con la calibracion)
 
 const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
@@ -121,13 +123,16 @@ function recalcTimes() {
   SPEED = c.stopD[c.stops.length - 1] * c.k / rt[rt.length - 1]; // m/min promedio real (con paradas)
   LINES.forEach(l => {
     l.real = REAL_T[l.id] || null;
-    l.stops.forEach((s, i) => { s.d = l.stopD[i] * l.k; s.t = l.real ? l.real[i] : s.d / SPEED; });
+    l.realRev = REAL_T_REV[l.id] || null;
+    l.stops.forEach((s, i) => { s.d = l.stopD[i] * l.k; s.t = l.real ? l.real[i] : s.d / SPEED; s.rt = l.realRev ? l.realRev[i] : (l.stops[l.stops.length - 1].t - s.t); });
     const last = l.stops.length - 1;
-    l.T = l.stops[last].t;                 // minutos de ida
-    l.km = l.stops[last].d / 1000;         // km de ida
+    l.T0 = l.stops[last].t;                 // Llanitos -> Tecnologico
+    l.T1 = l.realRev ? l.realRev[0] : l.T0; // Tecnologico -> Llanitos
+    l.T = l.T0;                             // compatibilidad: tiempo de ida
+    l.km = l.stops[last].d / 1000;
     l.nBuses = NBUSES; l.dwell = DWELL;
-    l.cycle = 2 * (l.T + DWELL);           // ida + base + vuelta + base
-    l.headway = l.cycle / NBUSES;          // 4 camiones equidistantes: nunca dos en el mismo punto y sentido
+    l.cycle = l.T0 + DWELL + l.T1 + DWELL;
+    l.headway = l.cycle / NBUSES;
   });
 }
 
@@ -173,6 +178,15 @@ function positionAt(ln, minutes) {
   const f = b.t > a.t ? (m - a.t) / (b.t - a.t) : 0;
   return pointAt(ln, (ln.stopD[i] + f * (ln.stopD[i + 1] - ln.stopD[i])));
 }
+function positionAtReverse(ln, minutes) {
+  const m = Math.max(0, Math.min(minutes, ln.T1));
+  if (!ln.realRev) return pointAt(ln, (ln.T1 - m) * SPEED / ln.k);
+  let i = ln.stops.length - 1;
+  while (i > 1 && m > ln.stops[i - 1].rt) i--;
+  const a = ln.stops[i], b = ln.stops[i - 1];
+  const f = b.rt < a.rt ? (m - a.rt) / (b.rt - a.rt) : 0;
+  return pointAt(ln, ln.stopD[i] + f * (ln.stopD[i - 1] - ln.stopD[i]));
+}
 
 // ---------- Simulacion (sustituir por datos reales) ----------
 function fetchBuses() {
@@ -187,38 +201,34 @@ function fetchBuses() {
   return out;
 }
 function busFromPhase(ln, k, p) {
-  const T = ln.T;
-  let d, along, waiting = false;
-  const W = ln.dwell;
-  if (p < T)                    { d = 0; along = p; }
-  else if (p < T + W)           { d = 0; along = T; waiting = true; }
-  else if (p < 2 * T + W)       { d = 1; along = p - T - W; }
-  else                          { d = 1; along = T; waiting = true; }
-  const pos = positionAt(ln, d === 0 ? along : T - along);
+  const T0 = ln.T0, T1 = ln.T1, W = ln.dwell;
+  let d, along, waiting = false, pos;
+  if (p < T0) { d = 0; along = p; pos = positionAt(ln, along); }
+  else if (p < T0 + W) { d = 0; along = T0; waiting = true; pos = positionAt(ln, T0); }
+  else if (p < T0 + W + T1) { d = 1; along = p - T0 - W; pos = positionAtReverse(ln, along); }
+  else { d = 1; along = T1; waiting = true; pos = positionAtReverse(ln, T1); }
   return { id: ln.id + '-' + (k + 1), line: ln.id, dir: d, phase: p, waiting, lat: pos[0], lng: pos[1] };
 }
 // Llegadas de cada camion a una parada (ordenadas).
 // here = el camion esta en la estacion. En las bases (Llanitos y Tecnologico) espera de 15 a 20 min antes de salir:
 // ahi board = es la base donde sube el pasajero y dep = minutos que le faltan para salir.
 function arrivals(ln, d, i, buses) {
-  const t = ln.stops[i].t, T = ln.T, W = ln.dwell, c = ln.cycle, last = ln.stops.length - 1;
-  const target = d === 0 ? t : T + W + (T - t);
+  const st = ln.stops[i], T0 = ln.T0, T1 = ln.T1, W = ln.dwell, c = ln.cycle, last = ln.stops.length - 1;
+  const target = d === 0 ? st.t : T0 + W + st.rt;
   const boarding = (i === 0 && d === 0) || (i === last && d === 1);
   return buses.filter(b => b.line === ln.id).map(b => {
     const p = b.phase, el = (((p - target) % c) + c) % c;
     let w = (((target - p) % c) + c) % c;
     const inBase = b.waiting && ((i === last && b.dir === 0) || (i === 0 && b.dir === 1));
-    if (boarding && !inBase && w < 0.2) w += c;   // un camion que acaba de salir de la base ya no cuenta como proximo
-    const dep = inBase ? (b.dir === 1 ? c - p : T + W - p) : null;
+    if (boarding && !inBase && w < 0.2) w += c;
+    const dep = inBase ? (b.dir === 0 ? T0 + W - p : c - p) : null;
     let text = 'va en sentido contrario';
-    if (d === 0 && p >= 2 * T + W) text = 'en la base de ' + ln.stops[0].n;
-    else if (d === 1 && p >= T && p < T + W) text = 'en la base de ' + ln.stops[last].n;
-    else if (d === 0 && p < T && p <= target) {
+    if (d === 0 && b.dir === 0 && p < T0 && p <= target) {
       let j = 0; ln.stops.forEach((s, k) => { if (s.t <= p) j = k; });
-      text = (i - j <= 1 ? 'es la pr\u00f3xima parada' : 'a ' + (i - j) + ' paradas') + ' (viene de ' + ln.stops[j].n + ')';
-    } else if (d === 1 && p >= T + W && p <= target) {
-      const m = T - (p - T - W); let j = 0; ln.stops.forEach((s, k) => { if (s.t <= m) j = k; });
-      text = (j - i <= 0 ? 'es la pr\u00f3xima parada' : 'a ' + (j - i + 1) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, last)].n + ')';
+      text = (i - j <= 1 ? 'es la proxima parada' : 'a ' + (i - j) + ' paradas') + ' (viene de ' + ln.stops[j].n + ')';
+    } else if (d === 1 && b.dir === 1 && p >= T0 + W && p <= target) {
+      const m = p - T0 - W; let j = last; ln.stops.forEach((s, k) => { if (s.rt >= m) j = k; });
+      text = (j - i <= 0 ? 'es la proxima parada' : 'a ' + (j - i) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, last)].n + ')';
     }
     return { w, bus: b, here: inBase || (i !== 0 && i !== last && el < STOP_WAIT), inBase, board: inBase && boarding, dep, text };
   }).sort((x, y) => x.w - y.w);
@@ -484,25 +494,27 @@ function resetStops() {
 
 // ---------- Tarjeta de cada camion (recorrido) ----------
 function busCard(ln, b) {
-  const T = ln.T, S = ln.stops, last = S.length - 1, p = b.phase;
+  const S = ln.stops, last = S.length - 1, p = b.phase, T0 = ln.T0, T1 = ln.T1;
+  const T = b.dir === 0 ? T0 : T1, times = b.dir === 0 ? S.map(s => s.t) : S.map(s => s.rt);
   let m, body, head;
   if (b.waiting) {
-    const left = b.dir === 0 ? T + ln.dwell - p : ln.cycle - p;
-    m = b.dir === 0 ? T : 0; head = b.dir === 0 ? S[0].n : S[last].n;
+    const left = b.dir === 0 ? T0 + ln.dwell - p : ln.cycle - p;
+    m = b.dir === 0 ? T0 : T1; head = b.dir === 0 ? S[0].n : S[last].n;
     body = '<p><b>En la base de ' + (b.dir === 0 ? S[last].n : S[0].n) + '</b></p><p>Sale a las <b>' + inMin(left) + '</b> (en ' + mins(left) + ' min) hacia ' + head + '</p>';
   } else {
-    const along = b.dir === 0 ? p : p - T - ln.dwell;
-    m = b.dir === 0 ? along : T - along; head = b.dir === 0 ? S[last].n : S[0].n;
-    let j = 0; S.forEach((s, k) => { if (s.t <= m) j = k; });
-    const nx = Math.min(j + 1, last), prev = b.dir === 0 ? S[j] : S[nx], next = b.dir === 0 ? S[nx] : S[j];
-    const toNext = Math.abs(next.t - m), toEnd = b.dir === 0 ? T - m : m;
-    body = '<p>Pas\u00f3 por <b>' + prev.n + '</b></p><p>Pr\u00f3xima: <b>' + next.n + '</b> \u00b7 llega a las <b>' + inMin(toNext) + '</b> (' + (toNext < 1 ? 'llegando' : mins(toNext) + ' min') + ')</p>' +
+    const along = b.dir === 0 ? p : p - T0 - ln.dwell;
+    m = along; head = b.dir === 0 ? S[last].n : S[0].n;
+    let j = b.dir === 0 ? 0 : last; S.forEach((s, k) => { if (b.dir === 0 && s.t <= m) j = k; if (b.dir === 1 && s.rt >= m) j = k; });
+    const nx = b.dir === 0 ? Math.min(j + 1, last) : Math.max(j - 1, 0), prev = b.dir === 0 ? S[j] : S[Math.min(j + 1, last)], next = b.dir === 0 ? S[nx] : S[j];
+    const toNext = b.dir === 0 ? Math.abs(times[nx] - m) : Math.max(0, times[j] - m), toEnd = T - m;
+    body = '<p>Pasó por <b>' + prev.n + '</b></p><p>Próxima: <b>' + next.n + '</b> · llega a las <b>' + inMin(toNext) + '</b> (' + (toNext < 1 ? 'llegando' : mins(toNext) + ' min') + ')</p>' +
       '<p>Termina en ' + head + ' a las <b>' + inMin(toEnd) + '</b></p>';
   }
   const pct = Math.max(0, Math.min(100, m / T * 100));
-  return '<div class="bcard" style="--c:' + ln.color + '"><div class="bh"><b>\ud83d\ude8c ' + b.id + '</b><span>' + (b.dir === 0 ? '\u2192 ' : '\u2190 ') + head + '</span></div>' +
-    '<div class="bar"><i style="width:' + pct + '%"></i>' + S.map(s => '<u style="left:' + (s.t / T * 100) + '%"></u>').join('') +
-    '<span class="bm" style="left:' + pct + '%">\ud83d\ude8c</span></div>' + body + '</div>';
+  const markerTimes = b.dir === 0 ? S.map(s => s.t) : S.map(s => T1 - s.rt);
+  return '<div class="bcard" style="--c:' + ln.color + '"><div class="bh"><b>🚌 ' + b.id + '</b><span>' + (b.dir === 0 ? '→ ' : '← ') + head + '</span></div>' +
+    '<div class="bar"><i style="width:' + pct + '%"></i>' + markerTimes.map(t => '<u style="left:' + (t / T * 100) + '%"></u>').join('') +
+    '<span class="bm" style="left:' + pct + '%">🚌</span></div>' + body + '</div>';
 }
 
 // ---------- Ubicacion del usuario ----------
@@ -575,7 +587,7 @@ function offsetFromReport(ln, r) {
   for (let k = 0; k < ln.nBuses; k++) phases.push((((at - k * ln.headway) % c) + c) % c);
   const base = (r.i === 0 && r.d === 0) || (r.i === last && r.d === 1);
   if (base) {
-    const target = r.d === 0 ? c - r.left : ln.T + ln.dwell - r.left;   // fase en que el camion espera en la base con "left" min por salir
+    const target = r.d === 0 ? ln.T0 + ln.dwell - r.left : c - r.left;   // fase en que el camion espera en la base con "left" min por salir
     return phases.map(p => { let x = (target - p) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return x; })
       .reduce((m, x) => Math.abs(x) < Math.abs(m) ? x : m);
   }
@@ -587,7 +599,7 @@ function offsetFromReport(ln, r) {
 function syncOf(ln) {
   const r = reports[ln.id];
   if (!r || !ln.cycle) return 0;
-  const key = [r.ts, r.i, r.d, r.left, ln.cycle, ln.T].join('|');
+  const key = [r.ts, r.i, r.d, r.left, ln.cycle, ln.T0, ln.T1].join('|');
   if (ln._sk !== key) { ln._sk = key; ln._sv = offsetFromReport(ln, r); }
   return ln._sv;
 }
