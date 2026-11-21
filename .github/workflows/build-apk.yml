@@ -89,6 +89,8 @@ jobs:
             "$BT/aapt" dump badging "$APK" | grep -E "^package:" | sed -E "s/ platformBuild.*//"
             echo "Firma (SHA-256 del certificado):"
             "$BT/apksigner" verify --print-certs "$APK" | grep -E "certificate SHA-256" | head -1
+            echo "Llave guardada en el secret (SHA-256):"
+            keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | grep -m1 "SHA256:" | sed -E 's/.*SHA256: *//' | tr -d ':' | tr 'A-F' 'a-f'
           } | tee diag.txt
 
       - name: Publicar release (para el aviso de actualizacion dentro de la app)
