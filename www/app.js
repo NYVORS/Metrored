@@ -1,4 +1,3 @@
-
 // ============================================================
 // Redmetro Rioverde en vivo - prototipo con DATOS SIMULADOS
 // - Paradas segun el mapa publico de la SCT (Zona Media), posiciones verificadas.
@@ -38,7 +37,16 @@ LINES.forEach(l => l.stops.forEach((s, i) => { [s.lat, s.lng] = FIXED[l.id][i]; 
 // ---------- Parametros del servicio ----------
 const NBUSES = 4;          // siempre 4 camiones por linea
 const DWELL = 17;          // espera en cada base: de 15 a 20 min (se usa el promedio)
-const STOP_WAIT = 1;       // min que "se encuentra en la estacion"
+const STOP_WAIT = 1;       // min maximo que el camion se queda detenido en cada parada (el icono se queda en la parada y "se encuentra en la estacion")
+// Tiempo detenido en una parada: STOP_WAIT como maximo, pero nunca mas de la mitad del tramo hasta la siguiente
+// ni tanto que el camion tenga que superar VMAX_M_MIN (45 km/h, cerca de la maxima registrada en Strava) para llegar a la hora observada.
+const VMAX_M_MIN = 750;
+const dwellOf = (span, meters) => Math.max(0, Math.min(STOP_WAIT, 0.5 * span, span - meters / VMAX_M_MIN));
+// Detencion en la parada i, sentido d (0 ida, 1 regreso), segun el tramo que sigue.
+function segDwell(ln, d, i) {
+  if (d === 0) return i < ln.stops.length - 1 ? dwellOf(ln.stops[i + 1].t - ln.stops[i].t, ln.stopD[i + 1] - ln.stopD[i]) : 0;
+  return i > 0 ? dwellOf(ln.stops[i - 1].rt - ln.stops[i].rt, ln.stopD[i] - ln.stopD[i - 1]) : 0;
+}
 const ROAD_FACTOR = 1.04;  // si la linea es recta, se estima la distancia por calles
 // Minutos reales desde la salida (por parada, en el orden de LINES). Medido con cronometro + Strava.
 // L2: Llanitos 7:40 -> Tecnologico 8:12 = 32 min. Centenario es interpolado (no se midio). Morelos = zona de transferencia (7:57).
@@ -216,7 +224,9 @@ function positionAt(ln, minutes) {
   let i = 0;
   while (i < ln.stops.length - 2 && m > ln.stops[i + 1].t) i++;
   const a = ln.stops[i], b = ln.stops[i + 1];
-  const f = b.t > a.t ? (m - a.t) / (b.t - a.t) : 0;
+  // El camion llega a "a" en a.t, se queda dwell min detenido y recorre el resto del tramo para llegar a "b" justo en b.t.
+  const span = b.t - a.t, dw = segDwell(ln, 0, i);
+  const f = span > 0 ? Math.max(0, Math.min(1, (m - a.t - dw) / (span - dw))) : 0;
   return pointAt(ln, (ln.stopD[i] + f * (ln.stopD[i + 1] - ln.stopD[i])));
 }
 function positionAtReverse(ln, minutes) {
@@ -226,7 +236,8 @@ function positionAtReverse(ln, minutes) {
   while (i > 1 && m > ln.stops[i - 1].rt) i--;
   const a = ln.stops[i], b = ln.stops[i - 1];
   // En sentido de vuelta rt crece hacia Llanitos: b (parada siguiente) tiene rt MAYOR que a.
-  const f = b.rt > a.rt ? Math.max(0, Math.min(1, (m - a.rt) / (b.rt - a.rt))) : 0;
+  const span = b.rt - a.rt, dw = segDwell(ln, 1, i);
+  const f = span > 0 ? Math.max(0, Math.min(1, (m - a.rt - dw) / (span - dw))) : 0;
   return pointAt(ln, ln.stopD[i] + f * (ln.stopD[i - 1] - ln.stopD[i]), true);
 }
 
@@ -272,7 +283,7 @@ function arrivals(ln, d, i, buses) {
       const m = p - T0 - W; let j = last; ln.stops.forEach((s, k) => { if (s.rt >= m) j = k; });
       text = (j - i <= 0 ? 'es la proxima parada' : 'a ' + (j - i) + ' paradas') + ' (viene de ' + ln.stops[Math.min(j + 1, last)].n + ')';
     }
-    return { w, bus: b, here: inBase || (i !== 0 && i !== last && el < STOP_WAIT), inBase, board: inBase && boarding, dep, text };
+    return { w, bus: b, here: inBase || (i !== 0 && i !== last && el < segDwell(ln, d, i)), inBase, board: inBase && boarding, dep, text };
   }).sort((x, y) => x.w - y.w);
 }
 // Minutos para los proximos camiones. En la base cuenta tambien el que esta esperando (w = minutos para que salga).
