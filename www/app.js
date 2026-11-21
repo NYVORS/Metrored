@@ -30,7 +30,7 @@ const LINES = [
 // Posiciones verificadas (mismo orden que las paradas de cada linea).
 const FIXED = {
   L1: [[21.945963,-100.052648],[21.940996,-100.041009],[21.93657,-100.029058],[21.933656,-100.021822],[21.927224,-100.006227],[21.925299,-100.002042],[21.923058,-99.994077],[21.922128,-99.979951],[21.919731,-99.956552]],
-  L2: [[21.949435,-100.00534],[21.939796,-100.003564],[21.936243,-100.003079],[21.930557,-100.002422],[21.925393,-100.002022],[21.923566,-99.998588],[21.923058,-99.994077],[21.919278,-99.992375],[21.917188,-99.990336],[21.913946,-99.987102],[21.90707,-99.984188],[21.899703,-99.982242],[21.897899,-99.981223],[21.894028,-99.980102],[21.887858,-99.978007]],
+  L2: [[21.949435,-100.00534],[21.940203,-100.003805],[21.936069,-100.003217],[21.930784,-100.002457],[21.925393,-100.002022],[21.923486,-99.998776],[21.92308,-99.994591],[21.919392,-99.992395],[21.916763,-99.989755],[21.914682,-99.987805],[21.90707,-99.984188],[21.899703,-99.982242],[21.89684,-99.98085],[21.894028,-99.980102],[21.887858,-99.978007]],
 };
 LINES.forEach(l => l.stops.forEach((s, i) => { [s.lat, s.lng] = FIXED[l.id][i]; }));
 
@@ -44,9 +44,13 @@ const ROAD_FACTOR = 1.04;  // si la linea es recta, se estima la distancia por c
 const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 17, 19, 21, 23, 26, 28, 30, 31, 32] };
 // Tiempos manuales recientes, independientes por sentido. rt: minutos desde Tecnologico hacia Llanitos.
 const REAL_T_REV = { L2: [43, 38, 34, 30, 28, 24, 22, 18, 16, 14, 9, 6, 5, 3, 0] }; // Correos se aproxima a Matamoros en el listado de paradas
+// ---------- Actualizaciones (aviso dentro de la app) ----------
+// Sube APP_VERSION en cada release de GitHub (mismo numero que la etiqueta del release, ej. v3.2.0).
+// UPDATE_REPO = 'usuario/repositorio' (publico). Si queda vacio, no se busca nada.
+const APP_VERSION = '3.2.0', UPDATE_REPO = 'lalexdc14-dotcom/Metrored', VER_KEY = 'mr_appver_v1';
 let SPEED = 300;           // m/min (se recalcula con la calibracion)
 
-const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v4_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
+const STORE_KEY = 'mr_stops_v4', ROUTE_KEY = 'mr_route_v4_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
 // Ultimo reporte "ya llego" de cada linea: { li, i, d, left, ts(ms), uid }. Viene de este telefono o de otros usuarios.
 // De el se calcula el ajuste de reloj de la linea (ver syncOf).
 let reports = {};
@@ -101,8 +105,18 @@ function setGeom(ln, geom, road) {
   ln.k = road ? 1 : ROAD_FACTOR;
   ln.cum = [0];
   for (let i = 1; i < geom.length; i++) ln.cum.push(ln.cum[i - 1] + dist(geom[i - 1], geom[i]));
+  ln.geomR = offsetGeom(geom, 12);   // carril de regreso: paralelo a la ruta de ida, 12 m a la izquierda del sentido de ida
   ln.stopD = projectStops(ln);
   recalcTimes();
+}
+// Linea paralela desplazada "m" metros a la izquierda del sentido de la ruta (mismo numero de vertices que la ruta original).
+function offsetGeom(g, m) {
+  return g.map((p, i) => {
+    const a = g[Math.max(0, i - 1)], b = g[Math.min(g.length - 1, i + 1)], cl = Math.cos(p[0] * Math.PI / 180);
+    const dx = (b[1] - a[1]) * cl, dy = b[0] - a[0], L = Math.sqrt(dx * dx + dy * dy);
+    if (!L) return p;
+    return [p[0] + (dx / L) * m / 111320, p[1] + (-dy / L) * m / (111320 * cl)];
+  });
 }
 // Ubica cada parada sobre la ruta (distancia acumulada en m). Proyecta la parada sobre cada tramo y elige,
 // por programacion dinamica, la combinacion de menor desvio que respete el orden de las paradas.
@@ -183,8 +197,8 @@ async function loadRoute(ln) {
   } catch (e) { /* sin internet: queda la linea recta con el factor de calles */ }
 }
 
-function pointAt(ln, d) {
-  const g = ln.geom, c = ln.cum;
+function pointAt(ln, d, rev) {
+  const g = rev ? ln.geomR : ln.geom, c = ln.cum;
   if (d <= 0) return g[0];
   for (let i = 1; i < g.length; i++) {
     if (d <= c[i]) {
@@ -206,13 +220,13 @@ function positionAt(ln, minutes) {
 }
 function positionAtReverse(ln, minutes) {
   const m = Math.max(0, Math.min(minutes, ln.T1));
-  if (!ln.realRev) return pointAt(ln, (ln.T1 - m) * SPEED / ln.k);
+  if (!ln.realRev) return pointAt(ln, (ln.T1 - m) * SPEED / ln.k, true);
   let i = ln.stops.length - 1;
   while (i > 1 && m > ln.stops[i - 1].rt) i--;
   const a = ln.stops[i], b = ln.stops[i - 1];
   // En sentido de vuelta rt crece hacia Llanitos: b (parada siguiente) tiene rt MAYOR que a.
   const f = b.rt > a.rt ? Math.max(0, Math.min(1, (m - a.rt) / (b.rt - a.rt))) : 0;
-  return pointAt(ln, ln.stopD[i] + f * (ln.stopD[i - 1] - ln.stopD[i]));
+  return pointAt(ln, ln.stopD[i] + f * (ln.stopD[i - 1] - ln.stopD[i]), true);
 }
 
 // ---------- Simulacion (sustituir por datos reales) ----------
@@ -249,7 +263,7 @@ function arrivals(ln, d, i, buses) {
     const inBase = b.waiting && ((i === last && b.dir === 0) || (i === 0 && b.dir === 1));
     if (boarding && !inBase && w < 0.2) w += c;
     const dep = inBase ? (b.dir === 0 ? T0 + W - p : c - p) : null;
-    let text = 'va en sentido contrario';
+    let text = b.waiting ? 'espera en la base de ' + (b.dir === 0 ? ln.stops[last].n : ln.stops[0].n) : 'va hacia ' + (b.dir === 0 ? ln.stops[last].n : ln.stops[0].n);
     if (d === 0 && b.dir === 0 && p < T0 && p <= target) {
       let j = 0; ln.stops.forEach((s, k) => { if (s.t <= p) j = k; });
       text = (i - j <= 1 ? 'es la proxima parada' : 'a ' + (i - j) + ' paradas') + ' (viene de ' + ln.stops[j].n + ')';
@@ -451,9 +465,11 @@ function updateTrip() {
 function drawStatic() {
   const ln = LINES[lineIdx];
   if (state.poly) state.map.removeLayer(state.poly);
+  if (state.polyR) state.map.removeLayer(state.polyR);
   state.stopMarkers.forEach(m => state.map.removeLayer(m));
   state.stopMarkers = [];
-  state.poly = L.polyline(ln.geom, { color: ln.color, weight: 6, opacity: .9 }).addTo(state.map);
+  state.polyR = L.polyline(ln.geomR, { color: ln.color, weight: 4, opacity: .6 }).addTo(state.map);   // regreso
+  state.poly = L.polyline(ln.geom, { color: ln.color, weight: 6, opacity: .9 }).addTo(state.map);       // ida
   ln.stops.forEach((s, i) => {
     const cls = 'stop-pin' + (s.tr ? ' tr' : '') + (i === selStop ? ' sel' : '');
     const icon = L.divIcon({ className: '', html: '<div class="' + cls + '" style="--c:' + ln.color + '"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
@@ -464,7 +480,7 @@ function drawStatic() {
         s.lat = p.lat; s.lng = p.lng;
         saveOverrides();
         setGeom(ln, straightGeom(ln), false);
-        state.poly.setLatLngs(ln.geom);
+        state.poly.setLatLngs(ln.geom); state.polyR.setLatLngs(ln.geomR);
         clearTimeout(state.rt);
         state.rt = setTimeout(() => loadRoute(ln), 800);
       });
@@ -846,6 +862,43 @@ function tickCd() {
   });
 }
 
+function showToast(txt, ms) {
+  const t = document.createElement('div');
+  t.textContent = txt;
+  t.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:99999;background:#0a6b3d;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.3)';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms || 6000);
+}
+const verNum = v => String(v).replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+function isNewer(a, b) { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; }
+// Si la version cambio desde la ultima vez que se abrio la app, avisa que se actualizo.
+function announceUpdate() {
+  try {
+    const prev = localStorage.getItem(VER_KEY);
+    localStorage.setItem(VER_KEY, APP_VERSION);
+    if (prev && prev !== APP_VERSION) showToast('\u2705 Se actualiz\u00f3 correctamente a la versi\u00f3n ' + APP_VERSION);
+  } catch (e) {}
+}
+// Busca el ultimo release en GitHub; si es mas nuevo, muestra un aviso con boton para descargar el APK.
+async function checkUpdate() {
+  if (!UPDATE_REPO || !navigator.onLine) return;
+  try {
+    const r = await fetch('https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) return;
+    const j = await r.json(), tag = String(j.tag_name || '');
+    if (!tag || !isNewer(tag, APP_VERSION) || document.getElementById('updBar')) return;
+    const apk = (j.assets || []).find(a => /\.apk$/i.test(a.name || ''));
+    const url = apk ? apk.browser_download_url : j.html_url;
+    const bar = document.createElement('div');
+    bar.id = 'updBar';
+    bar.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:99999;background:#1a73e8;color:#fff;padding:12px 14px;border-radius:12px;font:600 14px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.3);display:flex;gap:8px;align-items:center';
+    bar.innerHTML = '<span style="flex:1">Hay una nueva actualizaci\u00f3n (' + tag + ')</span><button id="updGo" style="border:0;border-radius:8px;padding:8px 12px;font-weight:700">Descargar</button><button id="updNo" style="border:0;background:none;color:#fff;font-size:18px">\u2715</button>';
+    document.body.appendChild(bar);
+    document.getElementById('updGo').onclick = () => { window.open(url, '_blank') || (location.href = url); };
+    document.getElementById('updNo').onclick = () => bar.remove();
+  } catch (e) {}
+}
+
 function init() {
   loadOverrides();
   applyPrefs();
@@ -898,6 +951,7 @@ function init() {
   setInterval(() => { if (!document.hidden && state.map) { state.buses = fetchBuses(); drawBuses(state.buses); } }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   initOnline();
+  announceUpdate(); checkUpdate();
   window.addEventListener('online', () => { if (online.state !== 'ok') initOnline(); });
 }
 
