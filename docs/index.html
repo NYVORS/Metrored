@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MetroRed SLP Rioverde: app para ver dónde viene el camión (L1 y L2)</title>
+<meta name="description" content="App gratis para Android: mira dónde viene el siguiente MetroRed en Rioverde, SLP. Paradas, horarios estimados, tiempo de llegada (ETA) y reportes de otros usuarios de las líneas L1 y L2. App independiente, no oficial.">
+<meta name="keywords" content="MetroRed SLP, MetroRed Rioverde, app MetroRed, horarios MetroRed, dónde viene el MetroRed, MetroRed L1, MetroRed L2, transporte Rioverde, Ciudad Fernández">
+<link rel="canonical" href="https://lalexdc14-dotcom.github.io/Metrored/">
+<meta name="theme-color" content="#0a6b3d">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_MX">
+<meta property="og:title" content="MetroRed SLP Rioverde: ¿dónde viene el camión?">
+<meta property="og:description" content="Paradas, tiempo de llegada y reportes de usuarios de las líneas L1 y L2. Gratis para Android. App independiente, no oficial.">
+<meta property="og:url" content="https://lalexdc14-dotcom.github.io/Metrored/">
+<meta property="og:image" content="https://lalexdc14-dotcom.github.io/Metrored/icon.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="icon.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"MetroRed Rioverde","alternateName":"MetroRed SLP GPS","operatingSystem":"Android","applicationCategory":"TravelApplication","inLanguage":"es","description":"App independiente para consultar paradas, tiempo estimado de llegada y reportes de usuarios del MetroRed en Rioverde, San Luis Potosí.","offers":{"@type":"Offer","price":"0","priceCurrency":"MXN"},"url":"https://lalexdc14-dotcom.github.io/Metrored/"}
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"¿Es la app oficial del MetroRed?","acceptedAnswer":{"@type":"Answer","text":"No. Es una app independiente hecha por un usuario. No pertenece ni está respaldada por MetroRed ni por ninguna autoridad de transporte."}},
+{"@type":"Question","name":"¿Los horarios son oficiales?","acceptedAnswer":{"@type":"Answer","text":"No. Los tiempos se calcularon con observaciones de viajes reales y son estimaciones, no un horario garantizado. La hora de llegada puede variar por tráfico y por día."}},
+{"@type":"Question","name":"¿Cuánto cuesta la app?","acceptedAnswer":{"@type":"Answer","text":"Es gratis."}},
+{"@type":"Question","name":"¿Qué líneas incluye?","acceptedAnswer":{"@type":"Answer","text":"La línea L1 (Rioverde – Ciudad Fernández) y la línea L2 (Eje Norte – Sur)."}},
+{"@type":"Question","name":"¿Cómo se instala?","acceptedAnswer":{"@type":"Answer","text":"Descarga el archivo APK desde esta página, ábrelo y permite la instalación desde este origen cuando Android lo pida. Las actualizaciones se avisan dentro de la app."}}]}
+</script>
+<style>
+:root{--g:#0a6b3d;--g2:#13a04f;--bg:#f4faf6;--card:#fff;--tx:#14241b;--mut:#51655a;--bd:#d9e8de}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1511;--card:#15211a;--tx:#e8f3ec;--mut:#9db3a5;--bd:#27382d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:linear-gradient(135deg,var(--g),var(--g2));color:#fff;padding:36px 16px 44px;text-align:center;border-radius:0 0 28px 28px}
+header img{width:84px;height:84px;border-radius:20px;box-shadow:0 6px 18px rgba(0,0,0,.3);background:#fff2}
+h1{font-size:clamp(1.6rem,6vw,2.4rem);line-height:1.15;margin:14px auto 8px;max-width:640px}
+header p{margin:0 auto;max-width:560px;opacity:.95}
+.btn{display:inline-block;margin-top:20px;background:#c9f27a;color:#123;font-weight:800;padding:14px 26px;border-radius:999px;text-decoration:none;font-size:1.05rem;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.sub{display:block;margin-top:10px;font-size:.85rem;opacity:.9}
+main{max-width:760px;margin:0 auto;padding:24px 16px 48px}
+h2{font-size:1.35rem;margin:32px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px}
+.card b{display:block;margin-bottom:4px}
+.card span{color:var(--mut);font-size:.95rem}
+.card .tag,.tag{color:#fff;display:inline-block;background:var(--g);color:#fff;border-radius:999px;padding:2px 12px;font-weight:800;margin-right:6px}
+ol{padding-left:22px}li{margin:6px 0}
+details{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px 16px;margin:8px 0}
+summary{cursor:pointer;font-weight:700}
+details p{margin:8px 0 2px;color:var(--mut)}
+.note{background:var(--card);border-left:4px solid var(--g2);border-radius:10px;padding:12px 16px;color:var(--mut)}
+footer{text-align:center;color:var(--mut);font-size:.85rem;padding:0 16px 32px}
+a{color:var(--g2)}
+</style>
+</head>
+<body>
+<header>
+  <img src="icon.png" alt="Ícono de MetroRed SLP GPS" onerror="this.style.display='none'">
+  <h1>MetroRed SLP Rioverde: mira dónde viene el camión</h1>
+  <p>App gratis para Android con las paradas, el tiempo de llegada estimado y los reportes de otros usuarios de las líneas L1 y L2.</p>
+  <a id="dl" class="btn" href="https://github.com/lalexdc14-dotcom/Metrored/releases/latest">Descargar para Android</a>
+  <span class="sub" id="ver">Versión más reciente en GitHub</span>
+</header>
+<main>
+  <div class="note"><b>App independiente, no oficial.</b> No pertenece al MetroRed ni a ninguna autoridad de transporte. Los tiempos son estimaciones basadas en viajes reales observados, no un horario garantizado.</div>
+
+  <h2>¿Qué puedes hacer con la app?</h2>
+  <div class="grid">
+    <div class="card"><b>Ver los camiones en el mapa</b><span>Posición estimada de cada unidad sobre la ruta, con sus paradas.</span></div>
+    <div class="card"><b>Saber cuánto falta</b><span>Tiempo estimado de llegada (ETA) a cada parada, en cada sentido.</span></div>
+    <div class="card"><b>Reportes de usuarios</b><span>Avisa "ya llegó" y ve los avisos de otros para ajustar la estimación.</span></div>
+    <div class="card"><b>Planear tu viaje</b><span>Origen, destino y transbordos entre L1 y L2, con tus paradas favoritas.</span></div>
+    <div class="card"><b>Avisos de llegada</b><span>Notificación unos minutos antes de que llegue a tu parada.</span></div>
+    <div class="card"><b>Modo oscuro</b><span>Cómodo para usar de noche y en el camión.</span></div>
+  </div>
+
+  <h2>Líneas que incluye</h2>
+  <div class="grid">
+    <div class="card"><span class="tag">L1</span><b style="display:inline">Rioverde – Ciudad Fernández</b></div>
+    <div class="card"><span class="tag">L2</span><b style="display:inline">Eje Norte – Sur</b></div>
+  </div>
+
+  <h2>Cómo instalarla</h2>
+  <ol>
+    <li>Toca <b>Descargar para Android</b> y baja el archivo APK.</li>
+    <li>Ábrelo. Si Android lo pide, permite instalar apps desde este origen.</li>
+    <li>Abre MetroRed, acepta el permiso de ubicación (solo se pide una vez) y listo.</li>
+    <li>Las futuras versiones se avisan dentro de la app y se instalan encima, sin desinstalar.</li>
+  </ol>
+
+  <h2>Preguntas frecuentes</h2>
+  <details><summary>¿Es la app oficial del MetroRed?</summary><p>No. Es una app independiente hecha por un usuario, sin relación oficial con el MetroRed.</p></details>
+  <details><summary>¿Los horarios son oficiales?</summary><p>No. Se calcularon con observaciones de viajes reales y son estimaciones. Pueden variar por el tráfico y por el día.</p></details>
+  <details><summary>¿Cuánto cuesta?</summary><p>Es gratis.</p></details>
+  <details><summary>¿Es GPS en tiempo real?</summary><p>No exactamente. La posición de los camiones es una estimación con tiempos observados, que se ajusta con los reportes de los usuarios.</p></details>
+  <details><summary>¿Por qué no está en Play Store?</summary><p>Por ahora está en fase beta y se distribuye por esta página.</p></details>
+</main>
+<footer>MetroRed SLP Rioverde · App independiente · Beta</footer>
+<script>
+// Enlaza directo al APK del ultimo release (si la consulta falla, queda el enlace a la pagina de releases).
+fetch('https://api.github.com/repos/lalexdc14-dotcom/Metrored/releases/latest')
+  .then(r => r.ok ? r.json() : null).then(j => {
+    if (!j) return;
+    const apk = (j.assets || []).find(a => /\.apk$/i.test(a.name));
+    if (apk) document.getElementById('dl').href = apk.browser_download_url;
+    if (j.tag_name) document.getElementById('ver').textContent = 'Versión ' + j.tag_name.replace(/^v/i, '');
+  }).catch(() => {});
+</script>
+</body>
+</html>
