@@ -1,63 +1,59 @@
-# Redmetro Rioverde en vivo
+<div align="center">
 
-Prototipo de app para ver dónde viene el siguiente autobús de Mi Redmetro en Rioverde (Zona Media, SLP).
-Líneas: **L1 Rioverde–Ciudad Fernández** y **L2 Eje Norte–Sur**, con las paradas del mapa público de la SCT.
-Hoy usa **datos simulados** (4 autobuses por línea, ~50 min de ida, ~17 min de espera en base).
+# 🚌 Metro Red Rioverde — ¡Tu próximo autobús, a un toque!
 
-> Las posiciones de las paradas son aproximadas (calculadas desde la imagen del mapa). Hay que verificarlas con coordenadas reales.
-> App independiente: no usa logos ni marcas oficiales.
+**Prototipo independiente para Android y web pensado para moverse más fácil entre Rioverde y Ciudad Fernández (Zona Media, SLP).**
 
-## Estructura
+[![Estado](https://img.shields.io/badge/Estado-Prototipo%20Activo-brightgreen?style=for-the-badge)]()
+[![Plataforma](https://img.shields.io/badge/Plataforma-Android%20%7C%20Web-blue?style=for-the-badge)]()
+[![Compilación](https://img.shields.io/badge/APK-GitHub%20Actions-orange?style=for-the-badge)]()
 
-```
-www/index.html   Pantalla (mapa + panel de paradas)
-www/styles.css   Estilos
-www/app.js       Lógica, simulación y tiempos de llegada (ETA)
-capacitor.config.json   Configuración del empaquetado Android
-.github/workflows/build-apk.yml   Genera el APK en GitHub
-```
+*Mira dónde viene tu camión, revisa las paradas y calcula cuánto falta para que llegue sin quedarte esperando bajo el sol.*
 
-## Probar en el navegador
+</div>
 
-Abre `www/index.html` o corre un servidor local:
+---
 
-```
-cd www && python3 -m http.server 8000
-```
+## 🌟 ¿Por qué usar Metro Red?
 
-## Subir a GitHub y obtener el APK
+Ya sea que vayas a clases, al trabajo, de compras o a visitar a alguien entre **Rioverde** y **Ciudad Fernández**, esperar sin saber cuándo pasa la unidad hace perder tiempo. Este prototipo reúne en una pantalla clara:
 
-1. Crea un repositorio nuevo en GitHub (vacío).
-2. Sube todo el contenido de esta carpeta:
-   ```
-   git init
-   git add .
-   git commit -m "Primer prototipo"
-   git branch -M main
-   git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
-   git push -u origin main
-   ```
-3. En GitHub entra a la pestaña **Actions**. Se ejecuta *Build APK* automáticamente (también puedes lanzarlo con *Run workflow*).
-4. Al terminar (unos 5 a 10 min), abre la ejecución y descarga **metrored-debug-apk** en *Artifacts*. Dentro está `app-debug.apk`.
-5. Pásalo a tu Android e instálalo (permite "instalar apps de orígenes desconocidos").
+* 🗺️ **Mapa interactivo + lista de paradas:** Ubica el recorrido y revisa los puntos clave del mapa público de la SCT.
+* ⏱️ **Tiempos estimados de llegada (ETA):** Mira en cuánto tiempo llega el siguiente autobús a tu parada.
+* 🚍 **Dos rutas principales cubiertas:** **L1 Rioverde–Ciudad Fernández** y **L2 Eje Norte–Sur**.
+* 📡 **Listo para crecer a GPS real:** Hoy funciona con una simulación fluida (4 unidades por línea, ~50 min de ida y ~17 min de espera en base) y está preparado para conectarse a un servidor de ubicación real.
 
-## Cómo pasar de simulación a GPS reales
+---
 
-En `www/app.js`, la función `fetchBuses()` genera posiciones falsas. Cámbiala por una llamada a tu servidor, por ejemplo:
+## 📸 Vista previa de la app
 
-```js
-async function fetchBuses() {
-  const r = await fetch('https://TU-SERVIDOR/api/buses');
-  return r.json(); // [{id, line, dir, lat, lng, along, waiting}, ...]
-}
-```
+> *Tip: Cuando tengas tus capturas de pantalla, súbelas a una carpeta `assets/` en tu repositorio y reemplaza los enlaces de abajo para que se vean aquí.*
 
-Y cambia `drawAll()` para esperar con `await`. El servidor (por ejemplo Traccar) recibe los datos de los GPS.
+<div align="center">
+  <img src="assets/captura-mapa.png" alt="Mapa en vivo de Metro Red" width="280" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="assets/captura-paradas.png" alt="Lista de paradas y tiempos de llegada" width="280" />
+</div>
 
-## Pendientes
+---
 
-- Verificar coordenadas reales de cada parada y los minutos entre ellas (`LINES` en `www/app.js`).
-- Si obtienes permiso de la SCT, agregar sus logos y créditos con los archivos oficiales que ellos te den.
-- Conectar a los GPS reales.
-- Íconos y nombre definitivo de la app.
-- APK firmado (release) si lo quieres publicar en Play Store.
+## 🗺️ Rutas incluidas en el prototipo
+
+| Línea | Recorrido | Unidades simuladas | Tiempo de ida aprox. | Espera en base aprox. |
+| :--- | :--- | :---: | :---: | :---: |
+| **L1** | **Rioverde – Ciudad Fernández** | 4 autobuses | ~50 min | ~17 min |
+| **L2** | **Eje Norte – Sur** | 4 autobuses | ~50 min | ~17 min |
+
+> ⚠️ **Nota importante:** Este es un proyecto independiente y **no utiliza logos ni marcas oficiales**. Las ubicaciones de las paradas en el prototipo son aproximaciones tomadas del mapa público de la SCT y están pensadas para validarse con coordenadas exactas.
+
+---
+
+## 📁 ¿Cómo está organizado el proyecto?
+
+```text
+www/
+ ├── index.html                  # Pantalla principal (mapa + panel de paradas)
+ ├── styles.css                  # Diseño y estilos visuales de la app
+ └── app.js                    # Movimiento simulado, rutas y cálculo de llegada
+capacitor.config.json          # Configuración para armar la app de Android
+.github/workflows/build-apk.yml # Flujo automático en GitHub para crear el APK
