@@ -69,6 +69,23 @@ jobs:
           fi
           mkdir -p ~/.android
           echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          cp ~/.android/debug.keystore android/app/fixed-debug.keystore
+
+      - name: Firma explicita en android/app/build.gradle
+        run: |
+          python3 - <<'PY'
+          import re
+          p = 'android/app/build.gradle'
+          s = open(p).read()
+          if 'fixed-debug.keystore' not in s:
+              block = ('    signingConfigs {\n        debug {\n            storeFile file("fixed-debug.keystore")\n'
+                       '            storePassword "android"\n            keyAlias "androiddebugkey"\n            keyPassword "android"\n        }\n    }\n')
+              s2 = re.sub(r'(^android\s*\{[ \t]*\n)', lambda m: m.group(1) + block, s, count=1, flags=re.M)
+              if s2 == s:
+                  raise SystemExit('No se pudo agregar la firma a build.gradle')
+              open(p, 'w').write(s2)
+          PY
+          grep -n -A6 "signingConfigs" android/app/build.gradle | head -12
 
       - name: Compilar APK debug
         working-directory: android
@@ -92,6 +109,12 @@ jobs:
             echo "Llave guardada en el secret (SHA-256):"
             keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | grep -m1 "SHA256:" | sed -E 's/.*SHA256: *//' | tr -d ':' | tr 'A-F' 'a-f'
           } | tee diag.txt
+          APKFP=$("$BT/apksigner" verify --print-certs "$APK" | grep -m1 "certificate SHA-256" | sed -E 's/.*digest: *//' | tr 'A-F' 'a-f')
+          KSFP=$(keytool -list -v -keystore ~/.android/debug.keystore -storepass android 2>/dev/null | grep -m1 "SHA256:" | sed -E 's/.*SHA256: *//' | tr -d ':' | tr 'A-F' 'a-f')
+          if [ -z "$APKFP" ] || [ "$APKFP" != "$KSFP" ]; then
+            echo "ERROR: el APK no esta firmado con la llave del secret. No se publica el release."; exit 1
+          fi
+          echo "OK: el APK esta firmado con la llave fija."
 
       - name: Publicar release (para el aviso de actualizacion dentro de la app)
         env:
