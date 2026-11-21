@@ -45,6 +45,3 @@ Ya sea que vayas a clases, al trabajo, de compras o a visitar a alguien entre **
 | **L2** | **Eje Norte – Sur** | 4 autobuses | ~50 min | ~17 min |
 
 > ⚠️ **Nota importante:** Este es un proyecto independiente y **no utiliza logos ni marcas oficiales**. Las ubicaciones de las paradas en el prototipo son aproximaciones tomadas del mapa público de la SCT y están pensadas para validarse con coordenadas exactas.
-
-app de Android
-.github/workflows/build-apk.yml # Flujo automático en GitHub para crear el APK
