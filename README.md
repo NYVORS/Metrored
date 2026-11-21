@@ -29,11 +29,7 @@ Ya sea que vayas a clases, al trabajo, de compras o a visitar a alguien entre **
 
 > *Tip: Cuando tengas tus capturas de pantalla, súbelas a una carpeta `assets/` en tu repositorio y reemplaza los enlaces de abajo para que se vean aquí.*
 
-<div align="center">
-  <img src="assets/captura-mapa.png" alt="Mapa en vivo de Metro Red" width="280" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="assets/captura-paradas.png" alt="Lista de paradas y tiempos de llegada" width="280" />
-</div>
+<
 
 ---
 
@@ -45,6 +41,13 @@ Ya sea que vayas a clases, al trabajo, de compras o a visitar a alguien entre **
 | **L2** | **Eje Norte – Sur** | 4 autobuses | ~50 min | ~17 min |
 
 > ⚠️ **Nota importante:** Este es un proyecto independiente y **no utiliza logos ni marcas oficiales**. Las ubicaciones de las paradas en el prototipo son aproximaciones tomadas del mapa público de la SCT y están pensadas para validarse con coordenadas exactas.
+
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/lalexdc14-dotcom/Metrored/main/assets/captura-mapa.png" alt="Mapa de Metro Red" width="280" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://raw.githubusercontent.com/lalexdc14-dotcom/Metrored/main/assets/captura-paradas.png" alt="Paradas y tiempos de llegada" width="280" />
+</div>
 
 ---
 
