@@ -23,10 +23,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Leer version de la app (APP_VERSION en app.js)
+      - name: Version automatica (3.2.N, donde N = numero de compilacion)
         run: |
-          V=$(grep -rhoE "APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'" --include=app.js --exclude-dir=node_modules --exclude-dir=android --exclude-dir=.git . | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
-          if [ -z "$V" ]; then echo "No se encontro APP_VERSION en app.js"; exit 1; fi
+          V="3.2.${{ github.run_number }}"
+          FILES=$(find . -name app.js -not -path './node_modules/*' -not -path './android/*' -not -path './.git/*')
+          if [ -z "$FILES" ]; then echo "No se encontro app.js"; exit 1; fi
+          for F in $FILES; do sed -i -E "s/APP_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'/APP_VERSION = '$V'/" "$F"; done
+          grep -h "APP_VERSION = " $FILES | head -1 | grep -q "'$V'" || { echo "No se pudo escribir la version en app.js"; exit 1; }
           echo "APP_VERSION=$V" >> "$GITHUB_ENV"
           echo "Version: $V"
 
