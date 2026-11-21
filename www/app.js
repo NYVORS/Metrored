@@ -46,7 +46,7 @@ const REAL_T = { L2: [0, 4, 5, 10, 12, 15, 17, 19, 21, 23, 26, 28, 30, 31, 32] }
 const REAL_T_REV = { L2: [43, 38, 34, 30, 28, 24, 22, 18, 16, 14, 9, 6, 5, 3, 0] }; // Correos se aproxima a Matamoros en el listado de paradas
 let SPEED = 300;           // m/min (se recalcula con la calibracion)
 
-const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v3_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
+const STORE_KEY = 'mr_stops_v3', ROUTE_KEY = 'mr_route_v4_', FAV_KEY = 'mr_fav_v1', REP_KEY = 'mr_rep_v1';
 // Ultimo reporte "ya llego" de cada linea: { li, i, d, left, ts(ms), uid }. Viene de este telefono o de otros usuarios.
 // De el se calcula el ajuste de reloj de la linea (ver syncOf).
 let reports = {};
@@ -101,17 +101,43 @@ function setGeom(ln, geom, road) {
   ln.k = road ? 1 : ROAD_FACTOR;
   ln.cum = [0];
   for (let i = 1; i < geom.length; i++) ln.cum.push(ln.cum[i - 1] + dist(geom[i - 1], geom[i]));
-  let start = 0;
-  ln.stopD = ln.stops.map(s => {
-    let best = start, bd = Infinity;
-    for (let i = start; i < geom.length; i++) {
-      const d = dist(geom[i], [s.lat, s.lng]);
-      if (d < bd) { bd = d; best = i; }
-    }
-    start = best;
-    return ln.cum[best];
-  });
+  ln.stopD = projectStops(ln);
   recalcTimes();
+}
+// Ubica cada parada sobre la ruta (distancia acumulada en m). Proyecta la parada sobre cada tramo y elige,
+// por programacion dinamica, la combinacion de menor desvio que respete el orden de las paradas.
+// Asi una parada nunca "salta" a un punto posterior de la ruta ni deja tramos de longitud 0 (camion congelado).
+function projectStops(ln) {
+  const g = ln.geom, n = g.length - 1, S = ln.stops.length;
+  if (n < 1) return ln.stops.map(() => 0);
+  const cand = ln.stops.map(s => {
+    const arr = new Array(n);
+    for (let j = 0; j < n; j++) {
+      const a = g[j], b = g[j + 1], cl = Math.cos(a[0] * Math.PI / 180);
+      const bx = (b[1] - a[1]) * cl, by = b[0] - a[0], px = (s.lng - a[1]) * cl, py = s.lat - a[0];
+      const L2 = bx * bx + by * by;
+      const t = L2 ? Math.max(0, Math.min(1, (px * bx + py * by) / L2)) : 0;
+      const dx = px - t * bx, dy = py - t * by;
+      arr[j] = { off: Math.sqrt(dx * dx + dy * dy) * 111320, along: ln.cum[j] + t * (ln.cum[j + 1] - ln.cum[j]) };
+    }
+    return arr;
+  });
+  const f = [], from = [];
+  for (let s = 0; s < S; s++) {
+    f.push(new Float64Array(n)); from.push(new Int32Array(n));
+    let bv = Infinity, bj = 0;
+    for (let j = 0; j < n; j++) {
+      if (s === 0) { f[s][j] = cand[s][j].off; continue; }
+      if (f[s - 1][j] < bv) { bv = f[s - 1][j]; bj = j; }
+      f[s][j] = bv + cand[s][j].off; from[s][j] = bj;
+    }
+  }
+  let j = 0;
+  for (let k = 1; k < n; k++) if (f[S - 1][k] < f[S - 1][j]) j = k;
+  const out = new Array(S);
+  for (let s = S - 1; s >= 0; s--) { out[s] = cand[s][j].along; if (s > 0) j = from[s][j]; }
+  for (let s = 1; s < S; s++) if (out[s] < out[s - 1]) out[s] = out[s - 1];
+  return out;
 }
 const straightGeom = ln => ln.stops.map(s => [s.lat, s.lng]);
 
@@ -184,7 +210,8 @@ function positionAtReverse(ln, minutes) {
   let i = ln.stops.length - 1;
   while (i > 1 && m > ln.stops[i - 1].rt) i--;
   const a = ln.stops[i], b = ln.stops[i - 1];
-  const f = b.rt < a.rt ? (m - a.rt) / (b.rt - a.rt) : 0;
+  // En sentido de vuelta rt crece hacia Llanitos: b (parada siguiente) tiene rt MAYOR que a.
+  const f = b.rt > a.rt ? Math.max(0, Math.min(1, (m - a.rt) / (b.rt - a.rt))) : 0;
   return pointAt(ln, ln.stopD[i] + f * (ln.stopD[i - 1] - ln.stopD[i]));
 }
 
@@ -400,7 +427,8 @@ function updateTrip() {
   const LA = LINES[pl.fromLine], LB = LINES[pl.toLine], A = LA.stops[pl.fromStop], B = LB.stops[pl.toStop];
   if (!A || !B || (LA.id === LB.id && pl.fromStop === pl.toStop)) { el.innerHTML = '<p class="note">Selecciona dos paradas diferentes.</p>'; return; }
   const traffic = (() => { const h = new Date().getHours(); return h >= 13 && h < 16 ? 1.15 : 1; })();
-  const leg = (ln, i, j) => Math.abs(ln.stops[j].t - ln.stops[i].t) * traffic;
+  // Tiempo por sentido: ida (hacia la ultima parada) usa t; vuelta usa rt (tiempos manuales independientes).
+  const leg = (ln, i, j) => (j >= i ? ln.stops[j].t - ln.stops[i].t : ln.stops[j].rt - ln.stops[i].rt) * traffic;
   let best = null;
   if (LA.id === LB.id) best = { minutes: leg(LA, pl.fromStop, pl.toStop), distance: Math.abs(B.d - A.d), path: 'Viaje directo' };
   else {
@@ -511,8 +539,8 @@ function busCard(ln, b) {
       '<p>Termina en ' + head + ' a las <b>' + inMin(toEnd) + '</b></p>';
   }
   const pct = Math.max(0, Math.min(100, m / T * 100));
-  const markerTimes = b.dir === 0 ? S.map(s => s.t) : S.map(s => T1 - s.rt);
-  return '<div class="bcard" style="--c:' + ln.color + '"><div class="bh"><b>🚌 ' + b.id + '</b><span>' + (b.dir === 0 ? '→ ' : '← ') + head + '</span></div>' +
+  const markerTimes = b.dir === 0 ? S.map(s => s.t) : S.map(s => s.rt);
+  return '<div class="bcard" style="--c:' + ln.color + '"><div class="bh"><b>🚌 ' + b.id + '</b><span>' + ((b.waiting ? b.dir === 0 : b.dir === 1) ? '← ' : '→ ') + head + '</span></div>' +
     '<div class="bar"><i style="width:' + pct + '%"></i>' + markerTimes.map(t => '<u style="left:' + (t / T * 100) + '%"></u>').join('') +
     '<span class="bm" style="left:' + pct + '%">🚌</span></div>' + body + '</div>';
 }
@@ -527,7 +555,8 @@ function loadReports() {
   try { reports = JSON.parse(localStorage.getItem(REP_KEY) || '{}') || {}; } catch (e) { reports = {}; }
   LINES.forEach((l, li) => {
     const r = reports[l.id];
-    if (r && !(r.li === li && r.i >= 0 && r.i < l.stops.length && (r.d === 0 || r.d === 1) && r.ts > 0)) delete reports[l.id];
+    // Se descartan reportes invalidos o de hace mas de 3 h (misma ventana que Firebase): ya no describen donde van los camiones.
+    if (r && !(r.li === li && r.i >= 0 && r.i < l.stops.length && (r.d === 0 || r.d === 1) && r.ts > 0 && r.left >= 0 && r.left <= 30 && Date.now() - r.ts < 3 * 3600000)) delete reports[l.id];
   });
 }
 function askPerm() { document.getElementById('perm').hidden = false; }
@@ -547,6 +576,7 @@ function startGeo() {
 }
 function onPos(p) {
   if (geoGet() !== 'granted') geoSet('granted');
+  if (loc.pos && p.coords.accuracy > 150) return;   // ignora lecturas muy imprecisas que hacen "saltar" tu punto
   loc.err = null; loc.acc = p.coords.accuracy;
   const ll = [p.coords.latitude, p.coords.longitude], first = !loc.pos;
   loc.pos = ll;
@@ -562,8 +592,9 @@ function onPos(p) {
   updateNear();
 }
 function updateNear() {
-  let best = null;
-  LINES.forEach((l, li) => l.stops.forEach((s, i) => { const d = dist(loc.pos, [s.lat, s.lng]); if (!best || d < best.d) best = { li, i, d }; }));
+  let best = null, bs = Infinity;
+  // En paradas compartidas (Blvd. Ferrocarrilero, Morelos) se prefiere la linea que ya estas viendo (ventaja de 30 m).
+  LINES.forEach((l, li) => l.stops.forEach((s, i) => { const d = dist(loc.pos, [s.lat, s.lng]), sc = d - (li === lineIdx ? 30 : 0); if (sc < bs) { bs = sc; best = { li, i, d }; } }));
   const pv = loc.near;
   if (pv && (pv.li !== best.li || pv.i !== best.i)) {
     const pd = dist(loc.pos, [LINES[pv.li].stops[pv.i].lat, LINES[pv.li].stops[pv.i].lng]);
@@ -601,7 +632,16 @@ function syncOf(ln) {
   if (!r || !ln.cycle) return 0;
   const key = [r.ts, r.i, r.d, r.left, ln.cycle, ln.T0, ln.T1].join('|');
   if (ln._sk !== key) { ln._sk = key; ln._sv = offsetFromReport(ln, r); }
-  return ln._sv;
+  // Cuando llega un reporte nuevo (de otro usuario) el ajuste se aplica de forma gradual (hasta 15 s de horario por segundo)
+  // para que los camiones se deslicen en vez de "teletransportarse". El toque propio ("Ya llego") se aplica de inmediato (_snap).
+  const now = Date.now();
+  if (ln._shown === undefined || ln._snap || !(now - ln._st < 30000)) ln._shown = ln._sv;
+  else {
+    const diff = ln._sv - ln._shown, step = 0.25 * Math.max(0, (now - ln._st) / 1000);
+    ln._shown += Math.abs(diff) <= step ? diff : Math.sign(diff) * step;
+  }
+  ln._st = now; ln._snap = false;
+  return ln._shown;
 }
 function saveReports() { try { localStorage.setItem(REP_KEY, JSON.stringify(reports)); } catch (e) {} }
 // Se queda con el reporte mas nuevo de cada linea.
@@ -619,6 +659,7 @@ function consider(r) {
 function syncTo(li, i, d, left) {
   const r = { li, i, d, left: Math.round(left), ts: Date.now(), uid: online.uid || 'local' };
   consider(r);
+  LINES[li]._snap = true;
   publishReport(r);
   loc.answer = { yes: d };
   refresh();
@@ -853,6 +894,8 @@ function init() {
   if (g === 'granted') startGeo(); else if (g === null) askPerm();
   setInterval(tickCd, 1000);
   setInterval(refresh, 5000);
+  // Los iconos avanzan cada segundo (la lista y las ETA se siguen redibujando cada 5 s).
+  setInterval(() => { if (!document.hidden && state.map) { state.buses = fetchBuses(); drawBuses(state.buses); } }, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   initOnline();
   window.addEventListener('online', () => { if (online.state !== 'ok') initOnline(); });
