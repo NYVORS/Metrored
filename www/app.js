@@ -173,7 +173,9 @@ function recalcTimes() {
   LINES.forEach(l => {
     l.real = REAL_T[l.id] || null;
     l.realRev = REAL_T_REV[l.id] || null;
-    l.stops.forEach((s, i) => { s.d = l.stopD[i] * l.k; s.t = l.real ? l.real[i] : s.d / SPEED; s.rt = l.realRev ? l.realRev[i] : (l.stops[l.stops.length - 1].t - s.t); });
+    l.stops.forEach((s, i) => { s.d = l.stopD[i] * l.k; s.t = l.real ? l.real[i] : s.d / SPEED; });
+    const lastT = l.stops[l.stops.length - 1].t;   // primero todos los t, despues los rt (antes salia NaN / desfasado en L1)
+    l.stops.forEach((s, i) => { s.rt = l.realRev ? l.realRev[i] : (lastT - s.t); });
     const last = l.stops.length - 1;
     l.T0 = l.stops[last].t;                 // Llanitos -> Tecnologico
     l.T1 = l.realRev ? l.realRev[0] : l.T0; // Tecnologico -> Llanitos
@@ -646,7 +648,7 @@ function offsetFromReport(ln, r) {
   for (let k = 0; k < ln.nBuses; k++) phases.push((((at - k * ln.headway) % c) + c) % c);
   const base = (r.i === 0 && r.d === 0) || (r.i === last && r.d === 1);
   if (base) {
-    const target = r.d === 0 ? ln.T0 + ln.dwell - r.left : c - r.left;   // fase en que el camion espera en la base con "left" min por salir
+    const target = r.d === 0 ? c - r.left : ln.T0 + ln.dwell - r.left;   // fase en que el camion espera en la base con "left" min por salir
     return phases.map((p, k) => { let x = (target - p) % c; if (x > c / 2) x -= c; if (x < -c / 2) x += c; return { k, x }; })
       .reduce((m, o) => Math.abs(o.x) < Math.abs(m.x) ? o : m);
   }
