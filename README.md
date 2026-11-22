@@ -8,7 +8,7 @@
 
 <!-- Botón Grande de Descarga Directa -->
 <a href="https://nyvors.github.io/Metrored/">
-  <img src="https://img.shields.io/badge/Descargar%50Apk-red?style=for-the-badge" alt="Descargar APK desde el sitio oficial" height="80"/>
+  <img src="https://img.shields.io/badge/Descargar%20Apk-red?style=for-the-badge" alt="Descargar APK desde el sitio oficial" height="80"/>
 </a>
 
 <br/><br/>
