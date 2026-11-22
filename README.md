@@ -25,7 +25,7 @@
 
 ## 📥 Cómo descargar e instalar en Android
 
-1. **Ve a la página de descarga:** Toca el botón verde de **DESCARGAR APK** arriba para entrar a [nyvors.github.io/Metrored](https://github.io/Metrored) (o entra a la sección de **Releases** de este repositorio).
+1. **Ve a la página de descarga:** Toca el botón rojo de **DESCARGAR APK** arriba para entrar a [nyvors.github.io/Metrored](https://nyvors.github.io/Metrored/) (o entra a la sección de **Releases** de este repositorio).
 2. **Descarga el archivo:** Pulsa el botón de descarga directa en la página para obtener la última versión del `.apk`.
 3. **Instala la aplicación:** Abre el archivo descargado. Si es la primera vez que instalas una app fuera de Play Store, Android te pedirá activar la opción **Permitir desde esta fuente**.
 4. **Configura tu ubicación:** Abre **MetroRed Rioverde** y acepta el permiso de ubicación (solo se pide una vez) para detectar las paradas cercanas y activar los reportes.
