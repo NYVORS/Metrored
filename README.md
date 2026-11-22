@@ -4,6 +4,15 @@
 
 **Prototipo independiente para Android y web pensado para moverse más fácil entre Rioverde y Ciudad Fernández (Zona Media, SLP).**
 
+<br/>
+
+<!-- Botón Grande de Descarga Directa -->
+<a href="https://github.io">
+  <img src="https://shields.io" alt="Descargar APK desde el sitio oficial" height="55"/>
+</a>
+
+<br/><br/>
+
 [![Estado](https://img.shields.io/badge/Estado-Prototipo%20Activo-brightgreen?style=for-the-badge)]()
 [![Plataforma](https://img.shields.io/badge/Plataforma-Android%20%7C%20Web-blue?style=for-the-badge)]()
 [![Compilación](https://img.shields.io/badge/APK-GitHub%20Actions-orange?style=for-the-badge)]()
@@ -11,6 +20,15 @@
 *Mira dónde viene tu camión, revisa las paradas y calcula cuánto falta para que llegue sin quedarte esperando bajo el sol.*
 
 </div>
+
+---
+
+## 📥 Cómo descargar e instalar en Android
+
+1. **Ve a la página de descarga:** Toca el botón verde de **DESCARGAR APK** arriba para entrar a [nyvors.github.io/Metrored](https://github.io) (o entra a la sección de **Releases** de este repositorio).
+2. **Descarga el archivo:** Pulsa el botón de descarga directa en la página para obtener la última versión del `.apk`.
+3. **Instala la aplicación:** Abre el archivo descargado. Si es la primera vez que instalas una app fuera de Play Store, Android te pedirá activar la opción **Permitir desde esta fuente**.
+4. **Configura tu ubicación:** Abre **MetroRed Rioverde** y acepta el permiso de ubicación (solo se pide una vez) para detectar las paradas cercanas y activar los reportes.
 
 ---
 
