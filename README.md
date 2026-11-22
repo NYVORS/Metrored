@@ -7,7 +7,7 @@
 <br/>
 
 <!-- Botón Grande de Descarga Directa -->
-<a href="https://github.io">
+<a href="https://github.io/Metrored">
   <img src="https://shields.io" alt="Descargar APK desde el sitio oficial" height="55"/>
 </a>
 
