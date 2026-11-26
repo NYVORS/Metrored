@@ -258,3 +258,4 @@
     message('No se pudo cerrar la sesión: ' + error.message);
   }
 };
+})();
