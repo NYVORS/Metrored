@@ -233,26 +233,28 @@
   };
 
   document.getElementById('testerLogout').onclick = async () => {
-    try {
-      if (privateAuth) {
-        await privateAuth.signOut();
-      }
-
-      window.metroredTester = null;
-
-      document.getElementById('testerLogin').hidden = false;
-      document.getElementById('testerLogout').hidden = true;
-
-      button.textContent = 'Acceso tester';
-
-      message('Sesión cerrada.');
-
-      document.dispatchEvent(
-        new CustomEvent('metrored:tester-logout')
-      );
-
-    } catch (error) {
-      message('No se pudo cerrar la sesión.');
+  try {
+    if (window.metroredStopTesterTracking) {
+      await window.metroredStopTesterTracking();
     }
-  };
-})();
+
+    document.dispatchEvent(
+      new CustomEvent('metrored:tester-logout')
+    );
+
+    if (privateAuth) {
+      await privateAuth.signOut();
+    }
+
+    window.metroredTester = null;
+
+    document.getElementById('testerLogin').hidden = false;
+    document.getElementById('testerLogout').hidden = true;
+
+    button.textContent = 'Acceso tester';
+    message('Sesión cerrada.');
+
+  } catch (error) {
+    message('No se pudo cerrar la sesión: ' + error.message);
+  }
+};
