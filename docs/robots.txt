@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://lalexdc14-dotcom.github.io/Metrored/sitemap.xml
+Sitemap: https://NYVORS.github.io/Metrored/sitemap.xml
